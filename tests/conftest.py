@@ -1,7 +1,11 @@
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
 import pytest_asyncio
+import sqlalchemy as sa
+from alembic import command
+from alembic.config import Config
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from testcontainers.postgres import PostgresContainer
 
@@ -31,6 +35,8 @@ async def engine(settings: Settings) -> AsyncIterator[AsyncEngine]:
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield eng
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
     await eng.dispose()
 
 
@@ -40,3 +46,23 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
     async with maker() as sess:
         yield sess
         await sess.rollback()
+
+
+@pytest_asyncio.fixture
+async def migrated_engine(settings: Settings) -> AsyncIterator[AsyncEngine]:
+    cfg = Config("alembic.ini")
+    cfg.set_main_option("sqlalchemy.url", settings.database_url)
+    # Ensure a clean slate: drop any tables left by other fixtures/tests
+    # (e.g. the `engine` fixture uses create_all) before running migrations.
+    eng_prep = create_engine(settings)
+    async with eng_prep.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(sa.text("DROP TABLE IF EXISTS alembic_version"))
+    await eng_prep.dispose()
+    # Run synchronous Alembic commands in a thread to avoid "asyncio.run()
+    # cannot be called from a running event loop" when env.py calls asyncio.run().
+    await asyncio.to_thread(command.upgrade, cfg, "head")
+    eng = create_engine(settings)
+    yield eng
+    await eng.dispose()
+    await asyncio.to_thread(command.downgrade, cfg, "base")
