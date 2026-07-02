@@ -26,6 +26,7 @@ class ChatService:
 
         acc = ReplyAccumulator()
         completed = False
+        done_event: Done | None = None
         try:
             async for delta in stream_reply(self._agent, user_content, history, acc):
                 yield Delta(text=delta)
@@ -43,4 +44,6 @@ class ChatService:
             if chat is not None:
                 await self._chats.touch(chat)
             if completed:
-                yield Done(message_id=str(assistant.id), usage=acc.usage)
+                done_event = Done(message_id=str(assistant.id), usage=acc.usage)
+        if done_event is not None:
+            yield done_event
