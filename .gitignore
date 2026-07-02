@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Env
+.env
+
+# Superpowers scratch (progress ledger, task briefs, reports)
+.superpowers/
+
+# Worktrees
+.worktrees/
+
+# IDE / OS
+.idea/
+.DS_Store
