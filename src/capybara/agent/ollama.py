@@ -5,7 +5,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from capybara.config import Settings
 
 
-def build_agent(settings: Settings) -> "Agent[None, str]":
+def build_agent(settings: Settings) -> Agent[None, str]:
     model = OpenAIChatModel(
         settings.default_model,
         provider=OpenAIProvider(

@@ -1,4 +1,5 @@
 from pydantic_ai import Agent
+from pydantic_ai.messages import ModelRequest, ModelResponse
 from pydantic_ai.models.test import TestModel
 
 from capybara.agent.stream import ReplyAccumulator, stream_reply, to_model_messages
@@ -11,6 +12,8 @@ async def test_stream_reply_yields_deltas_and_fills_accumulator() -> None:
     chunks = [delta async for delta in stream_reply(agent, "Привет", [], acc)]
     assert "".join(chunks) == "Привет, Роман"
     assert acc.text == "Привет, Роман"
+    assert acc.model == "test"
+    assert acc.usage == {"total_tokens": 54}
 
 
 def test_to_model_messages_maps_roles() -> None:
@@ -20,3 +23,5 @@ def test_to_model_messages_maps_roles() -> None:
     ]
     history = to_model_messages(msgs)
     assert len(history) == 2
+    assert isinstance(history[0], ModelRequest)
+    assert isinstance(history[1], ModelResponse)
