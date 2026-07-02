@@ -63,6 +63,14 @@ async def test_get_missing_chat_404(client: AsyncClient) -> None:
     assert resp.status_code == 404
 
 
+async def test_post_message_missing_chat_404(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/chats/00000000-0000-0000-0000-000000000099/messages",
+        json={"content": "hello"},
+    )
+    assert resp.status_code == 404
+
+
 async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> None:
     chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]
 
