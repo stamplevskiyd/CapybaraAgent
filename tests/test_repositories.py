@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import User
@@ -49,6 +50,27 @@ async def test_message_repo_add_and_order(session: AsyncSession) -> None:
     ordered = await messages.list_for_chat(chat.id)
     assert [m.role for m in ordered] == ["user", "assistant"]
     assert ordered[1].model == "test-model"
+
+
+async def test_base_repo_update_persists_field(session: AsyncSession) -> None:
+    """update() with a valid mapped field changes the attribute and flushes."""
+    user = await _seed_user(session)
+    chats = ChatRepo(session)
+    chat = await chats.create(user.id, "Original title")
+    updated = await chats.update(chat, title="Renamed title")
+    assert updated.title == "Renamed title"
+    # Re-fetch from the session to confirm the change was flushed.
+    refetched = await chats.get(chat.id)
+    assert refetched is not None
+    assert refetched.title == "Renamed title"
+
+
+async def test_base_repo_update_rejects_unknown_field(session: AsyncSession) -> None:
+    """update() with a non-mapped key raises ValueError instead of silently passing."""
+    user = await _seed_user(session)
+    chat = await ChatRepo(session).create(user.id, "Guard test")
+    with pytest.raises(ValueError, match="Unknown field 'titel'"):
+        await ChatRepo(session).update(chat, titel="typo")
 
 
 async def test_message_repo_seq_ordering(session: AsyncSession) -> None:

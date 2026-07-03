@@ -3,6 +3,7 @@
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,7 +41,19 @@ class BaseRepository[ModelT: Base]:
         return instance
 
     async def update(self, instance: ModelT, **fields: Any) -> ModelT:
-        """Apply field updates to an instance and flush."""
+        """Apply field updates to an instance and flush.
+
+        Args:
+            instance: The ORM model instance to update.
+            **fields: Mapped attribute names and their new values.
+
+        Raises:
+            ValueError: If any key in *fields* is not a mapped attribute of the model.
+        """
+        valid = set(sa_inspect(self.model).mapper.attrs.keys())
+        for key in fields:
+            if key not in valid:
+                raise ValueError(f"Unknown field {key!r} for {self.model.__name__}")
         for key, value in fields.items():
             setattr(instance, key, value)
         await self._session.flush()
