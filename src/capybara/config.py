@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
     database_url: str
     ollama_base_url: str = "http://host.docker.internal:11434"
     default_model: str = "llama3.1"
-    jwt_secret: str
+    jwt_secret: str = Field(min_length=32)
     jwt_ttl_minutes: int = 43200
     jwt_algorithm: str = "HS256"
 
