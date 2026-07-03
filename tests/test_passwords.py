@@ -19,3 +19,7 @@ def test_verify_password_correct() -> None:
 def test_verify_password_wrong() -> None:
     hashed = hash_password("correct-horse-battery")
     assert verify_password("wrong-password", hashed) is False
+
+
+def test_verify_password_malformed_hash_returns_false() -> None:
+    assert verify_password("anything", "not-a-valid-argon2-hash") is False

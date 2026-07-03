@@ -24,3 +24,9 @@ def test_wrong_secret_rejected() -> None:
     token = create_access_token(uuid4(), secret=SECRET, ttl_minutes=60)
     with pytest.raises(pyjwt.InvalidTokenError):
         decode_access_token(token, secret="a-different-secret")
+
+
+def test_algorithm_mismatch_rejected() -> None:
+    token = create_access_token(uuid4(), secret=SECRET, ttl_minutes=60, algorithm="HS256")
+    with pytest.raises(pyjwt.InvalidAlgorithmError):
+        decode_access_token(token, secret=SECRET, algorithm="HS512")
