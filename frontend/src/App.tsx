@@ -1,5 +1,6 @@
 import { AuthProvider, useAuth } from './auth/AuthContext'
 import { AuthScreen } from './screens/AuthScreen'
+import { ChatScreen } from './screens/ChatScreen'
 import { BackgroundGlow } from './components/BackgroundGlow'
 import styles from './App.module.css'
 
@@ -8,7 +9,7 @@ function Router() {
   return (
     <div className={styles.app}>
       <BackgroundGlow />
-      {token ? <div>chat</div> : <AuthScreen />}
+      {token ? <ChatScreen /> : <AuthScreen />}
     </div>
   )
 }

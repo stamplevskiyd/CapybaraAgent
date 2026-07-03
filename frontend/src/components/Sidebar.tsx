@@ -79,7 +79,7 @@ export function Sidebar({
           <Search size={14} />
         </span>
         <input
-          type="text"
+          type="search"
           className={styles.searchInput}
           placeholder="Поиск…"
           value={query}

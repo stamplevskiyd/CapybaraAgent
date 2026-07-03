@@ -4,8 +4,16 @@ import { ArrowUp, Paperclip } from 'lucide-react'
 import styles from './Composer.module.css'
 
 /** Textarea + send button; submits on Enter (not Shift+Enter) or button click, then clears. */
-export function Composer({ onSend, disabled }: { onSend: (t: string) => void; disabled?: boolean }) {
-  const [value, setValue] = useState('')
+export function Composer({
+  onSend,
+  disabled,
+  initialText,
+}: {
+  onSend: (t: string) => void
+  disabled?: boolean
+  initialText?: string
+}) {
+  const [value, setValue] = useState(initialText ?? '')
   const ref = useRef<HTMLTextAreaElement>(null)
 
   function submit() {
