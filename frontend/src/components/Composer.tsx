@@ -37,11 +37,11 @@ export function Composer({ onSend, disabled }: { onSend: (t: string) => void; di
         onKeyDown={onKeyDown}
       />
       <div className={styles.row}>
-        <button type="button" className={styles.iconBtn} aria-label="Прикрепить">
+        <button type="button" className={styles.iconBtn} disabled tabIndex={-1} aria-hidden="true">
           <Paperclip size={18} />
         </button>
         <div className={styles.spacer} />
-        <button type="button" className={styles.send} aria-label="Отправить" onClick={submit}>
+        <button type="button" className={styles.send} aria-label="Отправить" onClick={submit} disabled={disabled}>
           <ArrowUp size={18} />
         </button>
       </div>

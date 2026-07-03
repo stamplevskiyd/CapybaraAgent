@@ -1,5 +1,5 @@
 /** User card shown at the bottom of the Sidebar. Toggles a logout popover on click. */
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { ChevronUp, LogOut } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import styles from './Sidebar.module.css'
@@ -8,13 +8,27 @@ import styles from './Sidebar.module.css'
 export function UserCard() {
   const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handleMouseDown(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+    }
+  }, [open])
 
   if (!user) return null
 
   const initial = (user.displayName || user.username).charAt(0).toUpperCase()
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div ref={wrapRef} className={styles.userCardWrap}>
       {open && (
         <div className={styles.popover}>
           <button

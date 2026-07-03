@@ -84,6 +84,7 @@ export function Sidebar({
           placeholder="Поиск…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          aria-label="Поиск по чатам"
         />
       </div>
 

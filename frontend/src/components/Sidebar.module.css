@@ -198,6 +198,10 @@
 }
 
 /* ── UserCard (used by UserCard component) ── */
+.userCardWrap {
+  position: relative;
+}
+
 .userCard {
   position: relative;
   display: flex;
