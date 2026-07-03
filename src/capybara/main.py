@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from capybara.agent.ollama import build_agent
+from capybara.agent.ollama import OllamaAgent
 from capybara.config import get_settings
 from capybara.db.engine import create_engine, create_sessionmaker
 
@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
-    app.state.agent = build_agent(settings)
+    app.state.agent = OllamaAgent(settings)
     try:
         yield
     finally:

@@ -1,4 +1,4 @@
-from capybara.agent.ollama import build_agent
-from capybara.agent.stream import ReplyAccumulator, stream_reply, to_model_messages
+from capybara.agent.base import BaseAgent, ReplyAccumulator
+from capybara.agent.ollama import OllamaAgent
 
-__all__ = ["ReplyAccumulator", "build_agent", "stream_reply", "to_model_messages"]
+__all__ = ["BaseAgent", "OllamaAgent", "ReplyAccumulator"]

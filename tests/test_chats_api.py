@@ -1,15 +1,15 @@
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from pydantic_ai import Agent
-from pydantic_ai.models.test import TestModel
 
 from capybara.api.dependencies import get_agent, get_current_user, get_session
+from capybara.config import Settings
 from capybara.db.models import User
 from capybara.main import app
+from support import FakeAgent
 
 
 @pytest_asyncio.fixture
-async def client(engine):  # type: ignore[no-untyped-def]
+async def client(engine, settings: Settings):  # type: ignore[no-untyped-def]
     from capybara.db.engine import create_sessionmaker
 
     maker = create_sessionmaker(engine)
@@ -36,9 +36,7 @@ async def client(engine):  # type: ignore[no-untyped-def]
 
     app.dependency_overrides[get_session] = _override_session
     app.dependency_overrides[get_current_user] = _override_user
-    app.dependency_overrides[get_agent] = lambda: Agent(
-        TestModel(custom_output_text="Ответ агента")
-    )
+    app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "Ответ агента")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

@@ -1,24 +1,24 @@
-from pydantic_ai import Agent
-from pydantic_ai.models.test import TestModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import capybara.services.chat_service as _svc_module
+from capybara.config import Settings
 from capybara.db.models import User
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatService
 from capybara.services.events import Delta, Done
+from support import FakeAgent
 
 
-async def test_stream_turn_streams_and_persists(session: AsyncSession) -> None:
+async def test_stream_turn_streams_and_persists(
+    session: AsyncSession, settings: Settings
+) -> None:
     user = User(username="roman", display_name="Роман")
     session.add(user)
     await session.flush()
     chats, messages = ChatRepo(session), MessageRepo(session)
     chat = await chats.create(user.id, "c")
 
-    agent: Agent[None, str] = Agent(TestModel(custom_output_text="Ответ"))
-    service = ChatService(chats, messages, agent)
+    service = ChatService(chats, messages, FakeAgent(settings, "Ответ"))
 
     events = [e async for e in service.stream_turn(chat.id, "Вопрос")]
 
@@ -33,7 +33,9 @@ async def test_stream_turn_streams_and_persists(session: AsyncSession) -> None:
     assert stored[1].incomplete is False
 
 
-async def test_stream_turn_disconnect_saves_partial(session: AsyncSession) -> None:
+async def test_stream_turn_disconnect_saves_partial(
+    session: AsyncSession, settings: Settings
+) -> None:
     """Simulates a client disconnect mid-stream and verifies the partial assistant
     message is persisted with incomplete=True.
 
@@ -52,18 +54,19 @@ async def test_stream_turn_disconnect_saves_partial(session: AsyncSession) -> No
     chats, messages = ChatRepo(session), MessageRepo(session)
     chat = await chats.create(user.id, "dc")
 
-    agent: Agent[None, str] = Agent(TestModel(custom_output_text="Частичный ответ"))
-    service = ChatService(chats, messages, agent)
+    service = ChatService(
+        chats, messages, FakeAgent(settings, "Частичный ответ")
+    )
 
-    # Patch stream_reply in the chat_service module namespace so that it yields
-    # one partial delta and then raises, reproducing an abrupt mid-stream abort.
-    async def _abort_after_first(the_agent, user_content, history, acc):
+    # Patch stream_reply on the agent instance so that it yields one partial
+    # delta and then raises, reproducing an abrupt mid-stream abort.
+    async def _abort_after_first(user_content, history, acc):  # type: ignore[no-untyped-def]
         acc.text += "Частич"
         yield "Частич"
         raise RuntimeError("simulated disconnect")
 
-    original = _svc_module.stream_reply
-    _svc_module.stream_reply = _abort_after_first
+    original = service._agent.stream_reply  # type: ignore[method-assign]
+    service._agent.stream_reply = _abort_after_first  # type: ignore[method-assign]
     try:
         events = []
         try:
@@ -72,7 +75,7 @@ async def test_stream_turn_disconnect_saves_partial(session: AsyncSession) -> No
         except RuntimeError:
             pass  # expected – propagates from stream_reply through stream_turn
     finally:
-        _svc_module.stream_reply = original
+        service._agent.stream_reply = original  # type: ignore[method-assign]
 
     assert events == [Delta(text="Частич")]  # exactly one Delta, no Done
     stored = await messages.list_for_chat(chat.id)

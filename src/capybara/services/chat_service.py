@@ -1,9 +1,7 @@
 from collections.abc import AsyncIterator
 from uuid import UUID
 
-from pydantic_ai import Agent
-
-from capybara.agent.stream import ReplyAccumulator, stream_reply, to_model_messages
+from capybara.agent.base import BaseAgent, ReplyAccumulator
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.events import Delta, Done, StreamEvent
@@ -11,7 +9,7 @@ from capybara.services.events import Delta, Done, StreamEvent
 
 class ChatService:
     def __init__(
-        self, chats: ChatRepo, messages: MessageRepo, agent: Agent[None, str]
+        self, chats: ChatRepo, messages: MessageRepo, agent: BaseAgent
     ) -> None:
         self._chats = chats
         self._messages = messages
@@ -22,13 +20,13 @@ class ChatService:
     ) -> AsyncIterator[StreamEvent]:
         history_rows = await self._messages.list_for_chat(chat_id)
         await self._messages.create(chat_id=chat_id, role="user", content=user_content)
-        history = to_model_messages(history_rows)
+        history = self._agent.to_model_messages(history_rows)
 
         acc = ReplyAccumulator()
         completed = False
         done_event: Done | None = None
         try:
-            async for delta in stream_reply(self._agent, user_content, history, acc):
+            async for delta in self._agent.stream_reply(user_content, history, acc):
                 yield Delta(text=delta)
             completed = True
         finally:

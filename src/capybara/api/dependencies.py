@@ -3,9 +3,9 @@ from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import Depends, Request
-from pydantic_ai import Agent
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from capybara.agent.base import BaseAgent
 from capybara.db.models import User
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
@@ -46,13 +46,13 @@ def get_message_repo(
     return MessageRepo(session)
 
 
-def get_agent(request: Request) -> Agent[None, str]:
-    return cast(Agent[None, str], request.app.state.agent)
+def get_agent(request: Request) -> BaseAgent:
+    return cast(BaseAgent, request.app.state.agent)
 
 
 def get_chat_service(
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
     messages: Annotated[MessageRepo, Depends(get_message_repo)],
-    agent: Annotated[Agent[None, str], Depends(get_agent)],
+    agent: Annotated[BaseAgent, Depends(get_agent)],
 ) -> ChatService:
     return ChatService(chats, messages, agent)
