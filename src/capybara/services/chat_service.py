@@ -4,8 +4,8 @@ from collections.abc import AsyncIterator
 from uuid import UUID
 
 from capybara.agent.base import BaseAgent, ReplyAccumulator
+from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
-from capybara.repositories.filters import FieldEquals
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.events import Delta, Done, StreamEvent
 

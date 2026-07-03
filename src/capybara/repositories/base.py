@@ -9,7 +9,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.base import Base
-from capybara.repositories.filters import Filter
+from capybara.filters import Filter
 
 
 class BaseRepository[ModelT: Base]:

@@ -1,20 +1,12 @@
-"""Composable query filters for repositories."""
+"""Common reusable query filters."""
 
-from abc import ABC, abstractmethod
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import ColumnElement
 
 from capybara.db.base import Base
-
-
-class Filter(ABC):
-    """A reusable query filter that yields a SQLAlchemy WHERE criterion."""
-
-    @abstractmethod
-    def to_criterion(self, model: type[Base]) -> ColumnElement[bool]:
-        """Return the SQLAlchemy boolean criterion for the given model."""
+from capybara.filters.base import Filter
 
 
 class FieldEquals(Filter):

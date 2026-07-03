@@ -2,8 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.config import Settings
 from capybara.db.models import User
+from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
-from capybara.repositories.filters import FieldEquals
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatService
 from capybara.services.events import Delta, Done

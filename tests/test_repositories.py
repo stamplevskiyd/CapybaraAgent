@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import User
+from capybara.filters import FieldEquals, OwnedByUser
 from capybara.repositories.chat_repo import ChatRepo
-from capybara.repositories.filters import FieldEquals, OwnedByUser
 from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
 
