@@ -1,9 +1,28 @@
-"""Pydantic request/response schemas for the chat API."""
+"""Pydantic request/response schemas for the chat and user APIs."""
 
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class UserCreate(BaseModel):
+    """Request body for registering a user."""
+
+    display_name: str = Field(min_length=1, max_length=128)
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=8)
+
+
+class UserOut(BaseModel):
+    """Public user representation — never includes the password hash."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    username: str
+    display_name: str
+    created_at: datetime
 
 
 class ChatCreate(BaseModel):

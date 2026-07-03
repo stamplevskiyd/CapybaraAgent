@@ -11,9 +11,9 @@ from capybara.agent.base import BaseAgent
 from capybara.db.models import Chat, User
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
+from capybara.repositories.user_repo import UserRepo
 from capybara.services.chat_service import ChatService
-
-LOCAL_USER_ID = UUID("00000000-0000-0000-0000-000000000001")
+from capybara.services.user_service import UserService
 
 
 async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
@@ -28,14 +28,23 @@ async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-async def get_current_user(
+async def get_current_user() -> User:
+    """Resolve the authenticated user — 401 until the login slice exists."""
+    raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def get_user_repo(
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> User:
-    """Return the seeded local User; raise RuntimeError if migrations have not been run."""
-    user = await session.get(User, LOCAL_USER_ID)
-    if user is None:
-        raise RuntimeError("Local user not seeded — run migrations")
-    return user
+) -> UserRepo:
+    """Return a UserRepo bound to the current request session."""
+    return UserRepo(session)
+
+
+def get_user_service(
+    users: Annotated[UserRepo, Depends(get_user_repo)],
+) -> UserService:
+    """Return a UserService wired with the request-scoped UserRepo."""
+    return UserService(users)
 
 
 def get_chat_repo(
