@@ -2,6 +2,7 @@
   "name": "capybara-frontend",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=20" },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
