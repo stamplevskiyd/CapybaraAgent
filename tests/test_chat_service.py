@@ -10,7 +10,9 @@ from support import FakeAgent
 
 
 async def test_stream_turn_streams_and_persists(
-    session: AsyncSession, settings: Settings, make_user  # type: ignore[no-untyped-def]
+    session: AsyncSession,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
 ) -> None:
     user = await make_user(session, username="roman", display_name="Роман")
     chats, messages = ChatRepo(session), MessageRepo(session)
@@ -32,7 +34,9 @@ async def test_stream_turn_streams_and_persists(
 
 
 async def test_stream_turn_disconnect_saves_partial(
-    session: AsyncSession, settings: Settings, make_user  # type: ignore[no-untyped-def]
+    session: AsyncSession,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
 ) -> None:
     """Simulates a client disconnect mid-stream and verifies the partial assistant
     message is persisted with incomplete=True.
@@ -50,9 +54,7 @@ async def test_stream_turn_disconnect_saves_partial(
     chats, messages = ChatRepo(session), MessageRepo(session)
     chat = await chats.create(user.id, "dc")
 
-    service = ChatService(
-        chats, messages, FakeAgent(settings, "Частичный ответ")
-    )
+    service = ChatService(chats, messages, FakeAgent(settings, "Частичный ответ"))
 
     # Patch stream_reply on the agent instance so that it yields one partial
     # delta and then raises, reproducing an abrupt mid-stream abort.

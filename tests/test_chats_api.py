@@ -90,7 +90,9 @@ async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> Non
 
 
 async def test_get_chat_owned_by_other_user_returns_404(
-    client: AsyncClient, engine: AsyncEngine, make_user  # type: ignore[no-untyped-def]
+    client: AsyncClient,
+    engine: AsyncEngine,
+    make_user,  # type: ignore[no-untyped-def]
 ) -> None:
     """GET /chats/{id} returns 404 when the chat belongs to a different user."""
     maker = create_sessionmaker(engine)
@@ -106,7 +108,9 @@ async def test_get_chat_owned_by_other_user_returns_404(
 
 
 async def test_send_message_to_other_users_chat_returns_404(
-    client: AsyncClient, engine: AsyncEngine, make_user  # type: ignore[no-untyped-def]
+    client: AsyncClient,
+    engine: AsyncEngine,
+    make_user,  # type: ignore[no-untyped-def]
 ) -> None:
     """POST /chats/{id}/messages returns 404 when the chat belongs to a different user."""
     maker = create_sessionmaker(engine)
@@ -117,7 +121,5 @@ async def test_send_message_to_other_users_chat_returns_404(
         await sess.commit()
         other_chat_id = other_chat.id
 
-    resp = await client.post(
-        f"/chats/{other_chat_id}/messages", json={"content": "hello"}
-    )
+    resp = await client.post(f"/chats/{other_chat_id}/messages", json={"content": "hello"})
     assert resp.status_code == 404

@@ -5,13 +5,17 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -> None:
     async with migrated_engine.connect() as conn:
         tables = (
-            await conn.execute(
-                text(
-                    "SELECT table_name FROM information_schema.tables "
-                    "WHERE table_schema = 'public'"
+            (
+                await conn.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = 'public'"
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert {"users", "chats", "messages"} <= set(tables)
 
         count = (
@@ -20,13 +24,17 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
         assert count == 0
 
         cols = (
-            await conn.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_name = 'users'"
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'users'"
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert "password_hash" in set(cols)
 
         # Verify the seq identity column was added by the migration.

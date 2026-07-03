@@ -5,7 +5,7 @@ import pytest
 
 from capybara.security.tokens import create_access_token, decode_access_token
 
-SECRET = "unit-test-secret"
+SECRET = "test-jwt-secret-key-with-at-least-32-bytes!!"
 
 
 def test_create_decode_roundtrip() -> None:
@@ -23,7 +23,7 @@ def test_expired_token_rejected() -> None:
 def test_wrong_secret_rejected() -> None:
     token = create_access_token(uuid4(), secret=SECRET, ttl_minutes=60)
     with pytest.raises(pyjwt.InvalidTokenError):
-        decode_access_token(token, secret="a-different-secret")
+        decode_access_token(token, secret="a-completely-different-secret-over-32-bytes!!")
 
 
 def test_algorithm_mismatch_rejected() -> None:

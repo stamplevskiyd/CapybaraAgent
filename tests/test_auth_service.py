@@ -5,7 +5,7 @@ from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
 from capybara.services.auth_service import AuthService, InvalidCredentials
 
-SECRET = "svc-test-secret"
+SECRET = "test-jwt-secret-key-with-at-least-32-bytes!!"
 
 
 def _service(session: AsyncSession) -> AuthService:
