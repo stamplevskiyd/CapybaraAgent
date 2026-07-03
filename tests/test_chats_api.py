@@ -11,13 +11,12 @@ from support import FakeAgent
 
 
 @pytest_asyncio.fixture
-async def client(engine, settings: Settings):  # type: ignore[no-untyped-def]
+async def client(engine, settings: Settings, make_user):  # type: ignore[no-untyped-def]
     from capybara.db.engine import create_sessionmaker
 
     maker = create_sessionmaker(engine)
     async with maker() as setup:
-        user = User(username="roman", display_name="Роман")
-        setup.add(user)
+        user = await make_user(setup, username="roman", display_name="Роман")
         await setup.commit()
         user_id = user.id
 
@@ -91,14 +90,12 @@ async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> Non
 
 
 async def test_get_chat_owned_by_other_user_returns_404(
-    client: AsyncClient, engine: AsyncEngine
+    client: AsyncClient, engine: AsyncEngine, make_user  # type: ignore[no-untyped-def]
 ) -> None:
     """GET /chats/{id} returns 404 when the chat belongs to a different user."""
     maker = create_sessionmaker(engine)
     async with maker() as sess:
-        other_user = User(username="other", display_name="Other")
-        sess.add(other_user)
-        await sess.flush()
+        other_user = await make_user(sess, username="other", display_name="Other")
         other_chat = Chat(user_id=other_user.id, title="private")
         sess.add(other_chat)
         await sess.commit()
@@ -109,14 +106,12 @@ async def test_get_chat_owned_by_other_user_returns_404(
 
 
 async def test_send_message_to_other_users_chat_returns_404(
-    client: AsyncClient, engine: AsyncEngine
+    client: AsyncClient, engine: AsyncEngine, make_user  # type: ignore[no-untyped-def]
 ) -> None:
     """POST /chats/{id}/messages returns 404 when the chat belongs to a different user."""
     maker = create_sessionmaker(engine)
     async with maker() as sess:
-        other_user = User(username="other2", display_name="Other2")
-        sess.add(other_user)
-        await sess.flush()
+        other_user = await make_user(sess, username="other2", display_name="Other2")
         other_chat = Chat(user_id=other_user.id, title="private2")
         sess.add(other_chat)
         await sess.commit()

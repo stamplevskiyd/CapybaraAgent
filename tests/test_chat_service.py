@@ -1,7 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.config import Settings
-from capybara.db.models import User
 from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
@@ -11,11 +10,9 @@ from support import FakeAgent
 
 
 async def test_stream_turn_streams_and_persists(
-    session: AsyncSession, settings: Settings
+    session: AsyncSession, settings: Settings, make_user  # type: ignore[no-untyped-def]
 ) -> None:
-    user = User(username="roman", display_name="Роман")
-    session.add(user)
-    await session.flush()
+    user = await make_user(session, username="roman", display_name="Роман")
     chats, messages = ChatRepo(session), MessageRepo(session)
     chat = await chats.create(user.id, "c")
 
@@ -35,7 +32,7 @@ async def test_stream_turn_streams_and_persists(
 
 
 async def test_stream_turn_disconnect_saves_partial(
-    session: AsyncSession, settings: Settings
+    session: AsyncSession, settings: Settings, make_user  # type: ignore[no-untyped-def]
 ) -> None:
     """Simulates a client disconnect mid-stream and verifies the partial assistant
     message is persisted with incomplete=True.
@@ -49,9 +46,7 @@ async def test_stream_turn_disconnect_saves_partial(
     happens on a real disconnect (the transport raises at the next send/recv).  We
     therefore patch stream_reply to raise after yielding one partial delta.
     """
-    user = User(username="disconnect_user", display_name="Disconnect User")
-    session.add(user)
-    await session.flush()
+    user = await make_user(session, username="disconnect_user", display_name="Disconnect User")
     chats, messages = ChatRepo(session), MessageRepo(session)
     chat = await chats.create(user.id, "dc")
 

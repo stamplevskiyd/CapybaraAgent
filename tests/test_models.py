@@ -3,13 +3,11 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from capybara.db.models import Chat, Message, User
+from capybara.db.models import Chat, Message
 
 
-async def test_insert_and_read_graph(session: AsyncSession) -> None:
-    user = User(username="roman", display_name="Роман")
-    session.add(user)
-    await session.flush()
+async def test_insert_and_read_graph(session: AsyncSession, make_user) -> None:  # type: ignore[no-untyped-def]
+    user = await make_user(session, username="roman", display_name="Роман")
 
     chat = Chat(user_id=user.id, title="First chat")
     session.add(chat)

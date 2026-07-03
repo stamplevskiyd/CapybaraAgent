@@ -9,10 +9,15 @@ from capybara.filters import FieldEquals, OwnedByUser
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
+from capybara.security.passwords import hash_password
 
 
 async def _seed_user(session: AsyncSession) -> User:
-    user = User(username="roman", display_name="Роман")
+    user = User(
+        username="roman",
+        display_name="Роман",
+        password_hash=hash_password("password123"),
+    )
     session.add(user)
     await session.flush()
     return user
@@ -109,12 +114,14 @@ async def test_user_repo_list_orders_by_created_at_asc(session: AsyncSession) ->
         display_name="Older",
         created_at=now - timedelta(hours=1),
         updated_at=now,
+        password_hash=hash_password("x"),
     )
     newer = User(
         username="bbb_newer",
         display_name="Newer",
         created_at=now,
         updated_at=now,
+        password_hash=hash_password("x"),
     )
     session.add_all([older, newer])
     await session.flush()

@@ -17,7 +17,17 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
         count = (
             await conn.execute(text("SELECT count(*) FROM users WHERE username = 'roman'"))
         ).scalar_one()
-        assert count == 1
+        assert count == 0
+
+        cols = (
+            await conn.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'users'"
+                )
+            )
+        ).scalars().all()
+        assert "password_hash" in set(cols)
 
         # Verify the seq identity column was added by the migration.
         seq_col = (

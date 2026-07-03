@@ -12,6 +12,8 @@ from testcontainers.postgres import PostgresContainer
 from capybara.config import Settings
 from capybara.db.base import Base
 from capybara.db.engine import create_engine, create_sessionmaker
+from capybara.db.models import User
+from capybara.security.passwords import hash_password
 
 
 @pytest.fixture(scope="session")
@@ -46,6 +48,29 @@ async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
     async with maker() as sess:
         yield sess
         await sess.rollback()
+
+
+@pytest.fixture
+def make_user():  # type: ignore[no-untyped-def]
+    """Return an async factory that inserts a User with a hashed password."""
+
+    async def _make(
+        session: AsyncSession,
+        *,
+        username: str = "roman",
+        display_name: str = "Роман",
+        password: str = "password123",
+    ) -> User:
+        user = User(
+            username=username,
+            display_name=display_name,
+            password_hash=hash_password(password),
+        )
+        session.add(user)
+        await session.flush()
+        return user
+
+    return _make
 
 
 @pytest_asyncio.fixture
