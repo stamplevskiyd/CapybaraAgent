@@ -1,0 +1,61 @@
+/* Streaming caret keyframe (mirrors tokens.css for self-contained module). */
+@keyframes blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.messageRow {
+  display: flex;
+  gap: 12px;
+}
+
+.userRow {
+  justify-content: flex-end;
+}
+
+.assistantRow {
+  align-items: flex-start;
+}
+
+.avatar {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* User bubble */
+.bubble {
+  max-width: 75%;
+  padding: 10px 14px;
+  border-radius: 15px 15px 4px 15px;
+  font-size: 14.5px;
+  line-height: 1.55;
+  border: 1px solid rgba(216, 155, 108, 0.25);
+  background: linear-gradient(160deg, rgba(216, 155, 108, 0.2), rgba(216, 155, 108, 0.12));
+  color: var(--text-primary);
+}
+
+/* Assistant content */
+.assistantContent {
+  font-size: 14.5px;
+  line-height: 1.62;
+  color: #e8dfd5;
+  max-width: 75%;
+  padding-top: 2px;
+}
+
+.errorContent {
+  color: var(--error);
+}
+
+/* Streaming caret */
+.caret {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  background: var(--accent);
+  border-radius: 2px;
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  animation: blink 1s steps(1) infinite;
+}
