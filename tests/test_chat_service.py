@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from capybara.config import Settings
 from capybara.db.models import User
 from capybara.repositories.chat_repo import ChatRepo
+from capybara.repositories.filters import FieldEquals
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatService
 from capybara.services.events import Delta, Done
@@ -27,7 +28,7 @@ async def test_stream_turn_streams_and_persists(
     assert "".join(d.text for d in deltas) == "Ответ"
     assert len(done) == 1
 
-    stored = await messages.list_for_chat(chat.id)
+    stored = await messages.list(FieldEquals("chat_id", chat.id))
     assert [m.role for m in stored] == ["user", "assistant"]
     assert stored[1].content == "Ответ"
     assert stored[1].incomplete is False
@@ -78,6 +79,6 @@ async def test_stream_turn_disconnect_saves_partial(
         service._agent.stream_reply = original  # type: ignore[method-assign]
 
     assert events == [Delta(text="Частич")]  # exactly one Delta, no Done
-    stored = await messages.list_for_chat(chat.id)
+    stored = await messages.list(FieldEquals("chat_id", chat.id))
     assert stored[-1].role == "assistant"
     assert stored[-1].incomplete is True

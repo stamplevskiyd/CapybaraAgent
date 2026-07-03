@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -5,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import User
 from capybara.repositories.chat_repo import ChatRepo
+from capybara.repositories.filters import FieldEquals, OwnedByUser
 from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
 
@@ -29,7 +31,7 @@ async def test_chat_repo_create_list_get(session: AsyncSession) -> None:
     chat = await chats.create(user.id, "Sales Q2")
     assert chat.title == "Sales Q2"
     assert (await chats.get(chat.id)).id == chat.id  # type: ignore[union-attr]
-    listed = await chats.list_for_user(user.id)
+    listed = await chats.list(OwnedByUser(user.id))
     assert [c.id for c in listed] == [chat.id]
 
 
@@ -47,7 +49,7 @@ async def test_message_repo_add_and_order(session: AsyncSession) -> None:
     await messages.create(
         chat_id=chat.id, role="assistant", content="Здравствуйте", model="test-model"
     )
-    ordered = await messages.list_for_chat(chat.id)
+    ordered = await messages.list(FieldEquals("chat_id", chat.id))
     assert [m.role for m in ordered] == ["user", "assistant"]
     assert ordered[1].model == "test-model"
 
@@ -95,5 +97,44 @@ async def test_message_repo_seq_ordering(session: AsyncSession) -> None:
     # seq must be monotonically increasing regardless of created_at equality.
     assert user_msg.seq < assistant_msg.seq
 
-    ordered = await repo.list_for_chat(chat.id)
+    ordered = await repo.list(FieldEquals("chat_id", chat.id))
     assert [m.role for m in ordered] == ["user", "assistant"]
+
+
+async def test_user_repo_list_orders_by_created_at_asc(session: AsyncSession) -> None:
+    """UserRepo.list() returns users ordered by created_at ascending."""
+    now = datetime.now(UTC)
+    older = User(
+        username="aaa_older",
+        display_name="Older",
+        created_at=now - timedelta(hours=1),
+        updated_at=now,
+    )
+    newer = User(
+        username="bbb_newer",
+        display_name="Newer",
+        created_at=now,
+        updated_at=now,
+    )
+    session.add_all([older, newer])
+    await session.flush()
+
+    users = await UserRepo(session).list()
+    usernames = [u.username for u in users]
+    idx_older = usernames.index("aaa_older")
+    idx_newer = usernames.index("bbb_newer")
+    assert idx_older < idx_newer, "older created_at user must appear before newer"
+
+
+async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
+    """list(FieldEquals(...)) returns only rows matching the filter value."""
+    user = await _seed_user(session)
+    chat1 = await ChatRepo(session).create(user.id, "Chat 1")
+    chat2 = await ChatRepo(session).create(user.id, "Chat 2")
+    msgs = MessageRepo(session)
+    await msgs.create(chat_id=chat1.id, role="user", content="in chat1")
+    await msgs.create(chat_id=chat2.id, role="user", content="in chat2")
+
+    result = await msgs.list(FieldEquals("chat_id", chat1.id))
+    assert len(result) == 1
+    assert result[0].content == "in chat1"

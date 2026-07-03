@@ -1,30 +1,42 @@
 """Generic base repository providing common CRUD operations."""
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, ClassVar
 from uuid import UUID
 
+from sqlalchemy import ColumnElement, select
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.base import Base
+from capybara.repositories.filters import Filter
 
 
 class BaseRepository[ModelT: Base]:
     """Generic async repository for SQLAlchemy models."""
 
     model: type[ModelT]
+    default_filters: ClassVar[Sequence[Filter]] = ()
 
     def __init__(self, session: AsyncSession) -> None:
+        """Initialise the repository with an async session."""
         self._session = session
+
+    def _default_order_by(self) -> Sequence[ColumnElement[Any]]:
+        """Default result ordering — chronological by creation time; override per repo."""
+        return (self.model.created_at.asc(),)  # type: ignore[attr-defined]  # all models carry created_at via TimestampMixin
 
     async def get(self, id_: UUID) -> ModelT | None:
         """Fetch a model instance by UUID primary key, returning None if not found."""
         return await self._session.get(self.model, id_)
 
-    async def list(self) -> list[ModelT]:
-        """Return all rows for the model."""
-        result = await self._session.execute(select(self.model))
+    async def list(self, *filters: Filter) -> list[ModelT]:
+        """List rows matching default + given filters, in the repo's default order."""
+        stmt = select(self.model)
+        for query_filter in (*self.default_filters, *filters):
+            stmt = stmt.where(query_filter.to_criterion(self.model))
+        stmt = stmt.order_by(*self._default_order_by())
+        result = await self._session.execute(stmt)
         return list(result.scalars().all())
 
     async def create(self, **fields: Any) -> ModelT:

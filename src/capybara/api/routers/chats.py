@@ -23,6 +23,7 @@ from capybara.api.schemas import (
 )
 from capybara.db.models import User
 from capybara.repositories.chat_repo import ChatRepo
+from capybara.repositories.filters import FieldEquals, OwnedByUser
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatService
 from capybara.services.events import Delta, Done, Error
@@ -47,7 +48,7 @@ async def list_chats(
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
 ) -> list[ChatOut]:
     """Return all chats for the current user, ordered by most recently updated."""
-    rows = await chats.list_for_user(user.id)
+    rows = await chats.list(OwnedByUser(user.id))
     return [ChatOut.model_validate(c) for c in rows]
 
 
@@ -61,7 +62,7 @@ async def get_chat(
     chat = await chats.get(chat_id)
     if chat is None:
         raise HTTPException(status_code=404, detail="Chat not found")
-    rows = await messages.list_for_chat(chat_id)
+    rows = await messages.list(FieldEquals("chat_id", chat_id))
     return ChatDetailOut(
         id=chat.id,
         title=chat.title,

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from capybara.agent.base import BaseAgent, ReplyAccumulator
 from capybara.repositories.chat_repo import ChatRepo
+from capybara.repositories.filters import FieldEquals
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.events import Delta, Done, StreamEvent
 
@@ -23,7 +24,7 @@ class ChatService:
         self, chat_id: UUID, user_content: str
     ) -> AsyncIterator[StreamEvent]:
         """Stream a conversation turn, yielding Delta/Done events and persisting both messages."""
-        history_rows = await self._messages.list_for_chat(chat_id)
+        history_rows = await self._messages.list(FieldEquals("chat_id", chat_id))
         await self._messages.create(chat_id=chat_id, role="user", content=user_content)
         history = self._agent.to_model_messages(history_rows)
 
