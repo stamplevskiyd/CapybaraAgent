@@ -48,7 +48,12 @@ async def test_login_success_returns_bearer_token(client: AsyncClient, settings:
     assert resp.status_code == 200
     body = resp.json()
     assert body["token_type"] == "bearer"
-    assert decode_access_token(body["access_token"], secret=settings.jwt_secret) is not None
+    assert (
+        decode_access_token(
+            body["access_token"], secret=settings.jwt_secret, algorithm=settings.jwt_algorithm
+        )
+        is not None
+    )
 
 
 async def test_login_wrong_password_401(client: AsyncClient) -> None:
