@@ -34,7 +34,18 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "ASYNC"]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "D"]
+ignore = [
+    "D105",  # magic-method docstrings not required
+    "D107",  # __init__ docstrings not required; class docstring suffices
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"src/capybara/migrations/versions/**" = ["D"]
 
 [tool.mypy]
 python_version = "3.12"

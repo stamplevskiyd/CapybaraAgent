@@ -1,3 +1,5 @@
+"""FastAPI application factory and lifespan management."""
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -10,6 +12,7 @@ from capybara.db.engine import create_engine, create_sessionmaker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Initialise engine, sessionmaker, and agent on startup; dispose engine on shutdown."""
     settings = get_settings()
     engine = create_engine(settings)
     app.state.settings = settings
@@ -23,6 +26,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    """Create and configure the FastAPI application with all routers."""
     fastapi_app = FastAPI(title="CapybaraAgent", lifespan=lifespan)
     from capybara.api.routers import chats, health
 

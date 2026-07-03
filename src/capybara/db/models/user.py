@@ -1,3 +1,5 @@
+"""SQLAlchemy ORM model for the users table."""
+
 from datetime import datetime
 from uuid import UUID, uuid4
 
@@ -8,6 +10,8 @@ from capybara.db.base import Base
 
 
 class User(Base):
+    """ORM model representing a local user."""
+
     __tablename__ = "users"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)

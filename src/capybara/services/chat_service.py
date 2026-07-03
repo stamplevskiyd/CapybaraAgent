@@ -1,3 +1,5 @@
+"""Chat service orchestrating message persistence and LLM streaming."""
+
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -8,6 +10,8 @@ from capybara.services.events import Delta, Done, StreamEvent
 
 
 class ChatService:
+    """Orchestrate a conversation turn: persist user/assistant messages and stream LLM reply."""
+
     def __init__(
         self, chats: ChatRepo, messages: MessageRepo, agent: BaseAgent
     ) -> None:
@@ -18,6 +22,7 @@ class ChatService:
     async def stream_turn(
         self, chat_id: UUID, user_content: str
     ) -> AsyncIterator[StreamEvent]:
+        """Stream a conversation turn, yielding Delta/Done events and persisting both messages."""
         history_rows = await self._messages.list_for_chat(chat_id)
         await self._messages.create(chat_id=chat_id, role="user", content=user_content)
         history = self._agent.to_model_messages(history_rows)

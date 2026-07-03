@@ -1,3 +1,5 @@
+"""Router for chat and message endpoints."""
+
 import json
 from collections.abc import AsyncIterator
 from typing import Annotated
@@ -34,6 +36,7 @@ async def create_chat(
     user: Annotated[User, Depends(get_current_user)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
 ) -> ChatOut:
+    """Create a new chat for the current user."""
     chat = await chats.create(user.id, payload.title)
     return ChatOut.model_validate(chat)
 
@@ -43,6 +46,7 @@ async def list_chats(
     user: Annotated[User, Depends(get_current_user)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
 ) -> list[ChatOut]:
+    """Return all chats for the current user, ordered by most recently updated."""
     rows = await chats.list_for_user(user.id)
     return [ChatOut.model_validate(c) for c in rows]
 
@@ -53,6 +57,7 @@ async def get_chat(
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
     messages: Annotated[MessageRepo, Depends(get_message_repo)],
 ) -> ChatDetailOut:
+    """Return a chat with its full message history, or 404 if not found."""
     chat = await chats.get(chat_id)
     if chat is None:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -77,6 +82,7 @@ async def send_message(
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
     service: Annotated[ChatService, Depends(get_chat_service)],
 ) -> StreamingResponse:
+    """Accept a user message, stream the LLM reply via SSE, and persist both messages."""
     if await chats.get(chat_id) is None:
         raise HTTPException(status_code=404, detail="Chat not found")
 

@@ -1,3 +1,5 @@
+"""SQLAlchemy ORM model for the chats table."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class Chat(Base):
+    """ORM model representing a chat conversation owned by a user."""
+
     __tablename__ = "chats"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)

@@ -1,3 +1,5 @@
+"""Alembic environment script for async SQLAlchemy migrations."""
+
 import asyncio
 from logging.config import fileConfig
 
@@ -21,12 +23,14 @@ target_metadata = Base.metadata
 
 
 def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
+    """Run migrations within an active connection context."""
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
+    """Create an async engine and run migrations asynchronously."""
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -38,6 +42,7 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_offline() -> None:
+    """Run migrations in offline mode using the configured database URL."""
     context.configure(url=get_settings().database_url, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()

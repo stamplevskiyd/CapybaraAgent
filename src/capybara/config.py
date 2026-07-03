@@ -1,9 +1,13 @@
+"""Application configuration via pydantic-settings."""
+
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from environment variables or a .env file."""
+
     database_url: str
     ollama_base_url: str = "http://host.docker.internal:11434"
     default_model: str = "llama3.1"
@@ -13,4 +17,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Return a cached Settings instance."""
     return Settings()

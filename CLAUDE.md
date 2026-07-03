@@ -57,6 +57,8 @@ Layered and built for extension — these apply from the first slice, not later:
 - **Provider-agnostic LLM:** talk to the model through a thin agent abstraction so
   providers can be swapped/added without touching services.
 - **Typing:** strict mypy; prefer explicit types at module boundaries.
+- **Docstrings:** every module, class, and function/method has a docstring stating what it
+  does — enforced by ruff pydocstyle (`select = D`, google convention; tests exempt).
 - **Testing (TDD):** write tests first. Use pydantic-ai `TestModel`/`FunctionModel` to
   avoid hitting a real LLM; test repositories/services/API against a real Postgres
   (testcontainers) with per-test transactional isolation.
