@@ -1,4 +1,4 @@
-"""Pydantic request/response schemas for the chat and user APIs."""
+"""Pydantic request/response schemas for the chat, user, and auth APIs."""
 
 from datetime import datetime
 from uuid import UUID
@@ -65,3 +65,17 @@ class ChatDetailOut(ChatOut):
     """Response schema for a chat with its full message list."""
 
     messages: list[MessageOut]
+
+
+class LoginRequest(BaseModel):
+    """Request body for logging in."""
+
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    """Access token issued on successful login."""
+
+    access_token: str
+    token_type: str = "bearer"

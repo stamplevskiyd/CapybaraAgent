@@ -4,16 +4,23 @@ from collections.abc import AsyncGenerator
 from typing import Annotated, cast
 from uuid import UUID
 
+import jwt
 from fastapi import Depends, HTTPException, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent.base import BaseAgent
+from capybara.config import Settings
 from capybara.db.models import Chat, User
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
+from capybara.security.tokens import decode_access_token
+from capybara.services.auth_service import AuthService
 from capybara.services.chat_service import ChatService
 from capybara.services.user_service import UserService
+
+_bearer = HTTPBearer(auto_error=False)
 
 
 async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
@@ -28,9 +35,9 @@ async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
-async def get_current_user() -> User:
-    """Resolve the authenticated user — 401 until the login slice exists."""
-    raise HTTPException(status_code=401, detail="Authentication required")
+def get_settings_dep(request: Request) -> Settings:
+    """Return app-wide Settings from lifespan state."""
+    return cast(Settings, request.app.state.settings)
 
 
 def get_user_repo(
@@ -45,6 +52,39 @@ def get_user_service(
 ) -> UserService:
     """Return a UserService wired with the request-scoped UserRepo."""
     return UserService(users)
+
+
+def get_auth_service(
+    users: Annotated[UserRepo, Depends(get_user_repo)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> AuthService:
+    """Return an AuthService wired with the request-scoped UserRepo and JWT config."""
+    return AuthService(
+        users,
+        secret=settings.jwt_secret,
+        ttl_minutes=settings.jwt_ttl_minutes,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+async def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    users: Annotated[UserRepo, Depends(get_user_repo)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> User:
+    """Resolve the authenticated user from the Bearer JWT; 401 if missing/invalid/expired."""
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        user_id = decode_access_token(
+            credentials.credentials, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+    user = await users.get(user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
 
 
 def get_chat_repo(
