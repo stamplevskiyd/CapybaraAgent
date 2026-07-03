@@ -28,3 +28,14 @@ test('can switch to register mode', async () => {
   expect(screen.getByRole('button', { name: 'Создать аккаунт' })).toBeInTheDocument()
   expect(screen.getByLabelText('Имя')).toBeInTheDocument()
 })
+
+test('shows conflict error on 409 during registration', async () => {
+  server.use(http.post('/api/users', () => new HttpResponse(null, { status: 409 })))
+  renderScreen()
+  await userEvent.click(screen.getByText('Создать пользователя'))
+  await userEvent.type(screen.getByLabelText('Имя'), 'Роман')
+  await userEvent.type(screen.getByLabelText('Логин'), 'roman')
+  await userEvent.type(screen.getByLabelText('Пароль'), 'secret123')
+  await userEvent.click(screen.getByRole('button', { name: 'Создать аккаунт' }))
+  expect(await screen.findByText('Логин уже занят')).toBeInTheDocument()
+})

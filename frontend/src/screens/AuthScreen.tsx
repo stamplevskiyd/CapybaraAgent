@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { Lock } from 'lucide-react'
 import { ApiError } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { CapyLogo } from '../components/CapyLogo'
@@ -43,6 +44,11 @@ export function AuthScreen() {
         <h1 className={styles.title}>
           {mode === 'login' ? 'С возвращением' : 'Создать пользователя'}
         </h1>
+        <p className={styles.subtitle}>
+          {mode === 'login'
+            ? 'Войдите в свой локальный профиль.'
+            : 'Профиль хранится только на этом устройстве.'}
+        </p>
         {mode === 'register' && (
           <label className={styles.field}>
             <span>Имя</span>
@@ -67,17 +73,20 @@ export function AuthScreen() {
         </button>
         <div className={styles.switch}>
           {mode === 'login' ? (
-            <button type="button" onClick={() => setMode('register')}>
+            <button type="button" onClick={() => { setMode('register'); setError(null) }}>
               Нет профиля? <span>Создать пользователя</span>
             </button>
           ) : (
-            <button type="button" onClick={() => setMode('login')}>
+            <button type="button" onClick={() => { setMode('login'); setError(null) }}>
               Уже есть профиль? <span>Войти</span>
             </button>
           )}
         </div>
       </form>
-      <div className={styles.footer}>Всё хранится локально на вашем устройстве</div>
+      <div className={styles.footer}>
+        <Lock size={13} color="#726a61" strokeWidth={1.7} />
+        Всё хранится локально на вашем устройстве
+      </div>
     </div>
   )
 }
