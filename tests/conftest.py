@@ -28,6 +28,7 @@ def settings(pg_url: str) -> Settings:
         database_url=pg_url,
         ollama_base_url="http://ollama.test:11434",
         default_model="test-model",
+        jwt_secret="test-secret-key",
     )
 
 
