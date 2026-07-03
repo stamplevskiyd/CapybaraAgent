@@ -4,11 +4,11 @@ from collections.abc import AsyncGenerator
 from typing import Annotated, cast
 from uuid import UUID
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent.base import BaseAgent
-from capybara.db.models import User
+from capybara.db.models import Chat, User
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatService
@@ -55,6 +55,18 @@ def get_message_repo(
 def get_agent(request: Request) -> BaseAgent:
     """Return the BaseAgent stored on app state."""
     return cast(BaseAgent, request.app.state.agent)
+
+
+async def get_owned_chat(
+    chat_id: UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    chats: Annotated[ChatRepo, Depends(get_chat_repo)],
+) -> Chat:
+    """Return the chat if it belongs to the current user, else 404."""
+    chat = await chats.get(chat_id)
+    if chat is None or chat.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return chat
 
 
 def get_chat_service(

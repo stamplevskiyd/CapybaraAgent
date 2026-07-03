@@ -3,9 +3,8 @@
 import json
 from collections.abc import AsyncIterator
 from typing import Annotated
-from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 
 from capybara.api.dependencies import (
@@ -13,6 +12,7 @@ from capybara.api.dependencies import (
     get_chat_service,
     get_current_user,
     get_message_repo,
+    get_owned_chat,
 )
 from capybara.api.schemas import (
     ChatCreate,
@@ -21,7 +21,7 @@ from capybara.api.schemas import (
     MessageCreate,
     MessageOut,
 )
-from capybara.db.models import User
+from capybara.db.models import Chat, User
 from capybara.filters import FieldEquals, OwnedByUser
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
@@ -54,15 +54,11 @@ async def list_chats(
 
 @router.get("/{chat_id}", response_model=ChatDetailOut)
 async def get_chat(
-    chat_id: UUID,
-    chats: Annotated[ChatRepo, Depends(get_chat_repo)],
+    chat: Annotated[Chat, Depends(get_owned_chat)],
     messages: Annotated[MessageRepo, Depends(get_message_repo)],
 ) -> ChatDetailOut:
-    """Return a chat with its full message history, or 404 if not found."""
-    chat = await chats.get(chat_id)
-    if chat is None:
-        raise HTTPException(status_code=404, detail="Chat not found")
-    rows = await messages.list(FieldEquals("chat_id", chat_id))
+    """Return a chat with its full message history, or 404 if not found or not owned."""
+    rows = await messages.list(FieldEquals("chat_id", chat.id))
     return ChatDetailOut(
         id=chat.id,
         title=chat.title,
@@ -78,18 +74,15 @@ def _sse(event: str, data: dict[str, object]) -> str:
 
 @router.post("/{chat_id}/messages")
 async def send_message(
-    chat_id: UUID,
+    chat: Annotated[Chat, Depends(get_owned_chat)],
     payload: MessageCreate,
-    chats: Annotated[ChatRepo, Depends(get_chat_repo)],
     service: Annotated[ChatService, Depends(get_chat_service)],
 ) -> StreamingResponse:
     """Accept a user message, stream the LLM reply via SSE, and persist both messages."""
-    if await chats.get(chat_id) is None:
-        raise HTTPException(status_code=404, detail="Chat not found")
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(chat_id, payload.content):
+            async for event in service.stream_turn(chat.id, payload.content):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):

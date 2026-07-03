@@ -1,9 +1,11 @@
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from capybara.api.dependencies import get_agent, get_current_user, get_session
 from capybara.config import Settings
-from capybara.db.models import User
+from capybara.db.engine import create_sessionmaker
+from capybara.db.models import Chat, User
 from capybara.main import app
 from support import FakeAgent
 
@@ -86,3 +88,41 @@ async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> Non
     fetched = await client.get(f"/chats/{chat_id}")
     roles = [m["role"] for m in fetched.json()["messages"]]
     assert roles == ["user", "assistant"]
+
+
+async def test_get_chat_owned_by_other_user_returns_404(
+    client: AsyncClient, engine: AsyncEngine
+) -> None:
+    """GET /chats/{id} returns 404 when the chat belongs to a different user."""
+    maker = create_sessionmaker(engine)
+    async with maker() as sess:
+        other_user = User(username="other", display_name="Other")
+        sess.add(other_user)
+        await sess.flush()
+        other_chat = Chat(user_id=other_user.id, title="private")
+        sess.add(other_chat)
+        await sess.commit()
+        other_chat_id = other_chat.id
+
+    resp = await client.get(f"/chats/{other_chat_id}")
+    assert resp.status_code == 404
+
+
+async def test_send_message_to_other_users_chat_returns_404(
+    client: AsyncClient, engine: AsyncEngine
+) -> None:
+    """POST /chats/{id}/messages returns 404 when the chat belongs to a different user."""
+    maker = create_sessionmaker(engine)
+    async with maker() as sess:
+        other_user = User(username="other2", display_name="Other2")
+        sess.add(other_user)
+        await sess.flush()
+        other_chat = Chat(user_id=other_user.id, title="private2")
+        sess.add(other_chat)
+        await sess.commit()
+        other_chat_id = other_chat.id
+
+    resp = await client.post(
+        f"/chats/{other_chat_id}/messages", json={"content": "hello"}
+    )
+    assert resp.status_code == 404
