@@ -1,0 +1,31 @@
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--bg);
+}
+
+.glowA {
+  position: absolute;
+  top: -18%;
+  left: -12%;
+  width: 62vw;
+  height: 62vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow-a, rgba(206, 120, 58, 0.38)), transparent 62%);
+  filter: blur(30px);
+  animation: drift 24s ease-in-out infinite;
+}
+
+.glowB {
+  position: absolute;
+  bottom: -22%;
+  right: -10%;
+  width: 58vw;
+  height: 58vw;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--glow-b, rgba(120, 80, 150, 0.26)), transparent 62%);
+  filter: blur(30px);
+  animation: drift2 28s ease-in-out infinite;
+}
