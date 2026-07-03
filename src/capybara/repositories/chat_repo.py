@@ -1,25 +1,20 @@
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import Chat
+from capybara.repositories.base import BaseRepository
 
 
-class ChatRepo:
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+class ChatRepo(BaseRepository[Chat]):
+    model = Chat
 
-    async def create(self, user_id: UUID, title: str | None) -> Chat:
-        chat = Chat(user_id=user_id)
+    async def create(self, user_id: UUID, title: str | None = None) -> Chat:  # type: ignore[override]
+        fields: dict[str, Any] = {"user_id": user_id}
         if title is not None:
-            chat.title = title
-        self._session.add(chat)
-        await self._session.flush()
-        return chat
-
-    async def get(self, chat_id: UUID) -> Chat | None:
-        return await self._session.get(Chat, chat_id)
+            fields["title"] = title
+        return await super().create(**fields)
 
     async def list_for_user(self, user_id: UUID) -> list[Chat]:
         stmt = select(Chat).where(Chat.user_id == user_id).order_by(Chat.updated_at.desc())

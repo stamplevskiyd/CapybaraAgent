@@ -21,7 +21,7 @@ class ChatService:
         self, chat_id: UUID, user_content: str
     ) -> AsyncIterator[StreamEvent]:
         history_rows = await self._messages.list_for_chat(chat_id)
-        await self._messages.add(chat_id, "user", user_content)
+        await self._messages.create(chat_id=chat_id, role="user", content=user_content)
         history = to_model_messages(history_rows)
 
         acc = ReplyAccumulator()
@@ -32,12 +32,12 @@ class ChatService:
                 yield Delta(text=delta)
             completed = True
         finally:
-            assistant = await self._messages.add(
-                chat_id,
-                "assistant",
-                acc.text,
+            assistant = await self._messages.create(
+                chat_id=chat_id,
+                role="assistant",
+                content=acc.text,
                 model=acc.model,
-                usage=acc.usage,
+                usage_json=acc.usage,
                 incomplete=not completed,
             )
             chat = await self._chats.get(chat_id)

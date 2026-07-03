@@ -42,8 +42,10 @@ async def test_message_repo_add_and_order(session: AsyncSession) -> None:
     user = await _seed_user(session)
     chat = await ChatRepo(session).create(user.id, "c")
     messages = MessageRepo(session)
-    await messages.add(chat.id, "user", "Привет")
-    await messages.add(chat.id, "assistant", "Здравствуйте", model="test-model")
+    await messages.create(chat_id=chat.id, role="user", content="Привет")
+    await messages.create(
+        chat_id=chat.id, role="assistant", content="Здравствуйте", model="test-model"
+    )
     ordered = await messages.list_for_chat(chat.id)
     assert [m.role for m in ordered] == ["user", "assistant"]
     assert ordered[1].model == "test-model"
@@ -63,8 +65,10 @@ async def test_message_repo_seq_ordering(session: AsyncSession) -> None:
     chat = await ChatRepo(session).create(user.id, "seq-ordering-test")
     repo = MessageRepo(session)
     # Both inserts happen inside the same open transaction → same created_at.
-    user_msg = await repo.add(chat.id, "user", "Hello")
-    assistant_msg = await repo.add(chat.id, "assistant", "Hi there", model="m")
+    user_msg = await repo.create(chat_id=chat.id, role="user", content="Hello")
+    assistant_msg = await repo.create(
+        chat_id=chat.id, role="assistant", content="Hi there", model="m"
+    )
 
     # seq must be monotonically increasing regardless of created_at equality.
     assert user_msg.seq < assistant_msg.seq
