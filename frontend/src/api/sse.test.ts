@@ -10,6 +10,13 @@ function streamOf(chunks: string[]): ReadableStream<Uint8Array> {
   })
 }
 
+test('defaults event to "message" when no event: line is present', async () => {
+  const stream = streamOf(['data: {"text":"hi"}\n\n'])
+  const events: SseEvent[] = []
+  for await (const e of parseSse(stream)) events.push(e)
+  expect(events).toEqual([{ event: 'message', data: '{"text":"hi"}' }])
+})
+
 test('parses events split across chunk boundaries', async () => {
   const stream = streamOf([
     'event: delta\ndata: {"text":"Hel',
