@@ -38,5 +38,6 @@ class OwnedByUser(Filter):
 
     def to_criterion(self, model: type[Base]) -> ColumnElement[bool]:
         """Build `model.user_id == user_id`."""
+        # the Base bound doesn't declare user_id; callers must use this on owner-scoped models
         criterion: ColumnElement[bool] = model.user_id == self._user_id  # type: ignore[attr-defined]
         return criterion
