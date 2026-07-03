@@ -291,6 +291,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic-ai" },
     { name = "pydantic-settings" },
+    { name = "pyjwt" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -313,6 +314,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pydantic-ai", specifier = ">=0.0.20" },
     { name = "pydantic-settings", specifier = ">=2.5" },
+    { name = "pyjwt", specifier = ">=2.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.35" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
