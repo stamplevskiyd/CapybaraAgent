@@ -27,3 +27,26 @@ async def test_register_duplicate_username_raises(session: AsyncSession) -> None
     service = UserService(UserRepo(session))
     with pytest.raises(UsernameTaken):
         await service.register("Other", "roman", "password123")
+
+
+async def test_register_race_maps_integrity_error(
+    session: AsyncSession, make_user: object
+) -> None:
+    """Test that an IntegrityError from the DB is caught and re-raised as UsernameTaken.
+
+    Simulates the race where two requests both pass the pre-check but the
+    second flush violates the unique constraint on users.username.
+    The row is inserted first; then get_by_username is patched to return None
+    so the pre-check is bypassed, forcing the except branch to fire.
+    """
+    await make_user(session, username="roman", display_name="Роман")  # type: ignore[call-arg]
+    repo = UserRepo(session)
+
+    async def _always_none(username: str) -> None:
+        return None
+
+    repo.get_by_username = _always_none  # type: ignore[method-assign]
+
+    service = UserService(repo)
+    with pytest.raises(UsernameTaken):
+        await service.register("Other", "roman", "password123")
