@@ -15,7 +15,7 @@ class Delta:
 class Done:
     """Final event indicating the assistant message was saved successfully."""
 
-    message_id: str
+    message_id: str | None
     usage: dict[str, Any] | None
 
 

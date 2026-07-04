@@ -8,13 +8,13 @@ from support import FakeAgent
 def test_clean_title_strips_quotes_and_truncates() -> None:
     assert _clean_title('"Привет мир"', fallback="x") == "Привет мир"
     assert _clean_title("Строка один\nСтрока два", fallback="x") == "Строка один"
-    long = "a" * 100
-    assert _clean_title(long, fallback="x") == "a" * 60
+    long = "a" * 240
+    assert _clean_title(long, fallback="x") == "a" * 200
 
 
 def test_clean_title_empty_falls_back() -> None:
     assert _clean_title("   ", fallback="Как дела, друг?") == "Как дела, друг?"
-    assert _clean_title("''", fallback="Очень длинный вопрос " * 5).__len__() <= 60
+    assert _clean_title("''", fallback="Очень длинный вопрос " * 20).__len__() <= 200
 
 
 async def test_generate_title_returns_cleaned_model_output(settings: Settings) -> None:

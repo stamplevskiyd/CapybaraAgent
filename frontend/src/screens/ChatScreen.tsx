@@ -101,34 +101,64 @@ export function ChatScreen() {
     onCancel: cancel,
   })
 
-  /** Toggle favorite: optimistic local flip, then persist. */
+  /**
+   * Toggle favorite: optimistic local flip, then persist. On failure the list is
+   * re-synced from the server so the UI never drifts from the persisted state.
+   */
   async function handleToggleFavorite(id: string) {
     const chat = chats.find((c) => c.id === id)
     const next = !(chat?.is_favorite ?? false)
     patchLocal(id, { is_favorite: next })
-    await setFavorite(api, id, next)
+    try {
+      await setFavorite(api, id, next)
+    } catch {
+      await reload()
+    }
   }
 
-  /** Rename: optimistic local update, then persist. */
+  /** Rename: optimistic local update, then persist; re-sync from the server on failure. */
   async function handleRename(id: string, title: string) {
     patchLocal(id, { title })
-    await renameChat(api, id, title)
+    try {
+      await renameChat(api, id, title)
+    } catch {
+      await reload()
+    }
   }
 
-  /** Delete: remove locally (returning to welcome if it was active), then persist. */
+  /**
+   * Delete: remove locally (returning to welcome if it was active), then persist.
+   * On failure the still-existing chat is restored via a re-sync, and re-selected
+   * if it was the active one.
+   */
   async function handleDelete(id: string) {
-    if (id === activeChatId) setActiveChatId(null)
+    const wasActive = id === activeChatId
+    if (wasActive) setActiveChatId(null)
     removeLocal(id)
-    await deleteChat(api, id)
+    try {
+      await deleteChat(api, id)
+    } catch {
+      await reload()
+      if (wasActive) setActiveChatId(id)
+    }
   }
 
-  /** Update the selected model; persists to localStorage, updates draft, and PATCHes the active chat if open. */
+  /**
+   * Update the selected model; persists to localStorage, updates draft, and PATCHes
+   * the active chat if open. A failed PATCH reverts the draft and re-syncs the chat.
+   */
   async function handleSelectModel(model: string) {
+    const prevDraft = draftModel
     saveLastModel(model)
     setDraftModel(model)
     if (activeChatId) {
-      await patchChatModel(api, activeChatId, model)
-      await reload()
+      try {
+        await patchChatModel(api, activeChatId, model)
+        await reload()
+      } catch {
+        setDraftModel(prevDraft)
+        await reload()
+      }
     }
   }
 

@@ -74,6 +74,7 @@ class ChatService:
                 FieldEquals(Message.incomplete, False),
             )
             await messages.create(chat_id=chat_id, role="user", content=user_content)
+            await chats.touch(chat)
             await session.commit()
         return model, self._agent.to_model_messages(history_rows)
 
@@ -98,7 +99,7 @@ class ChatService:
             completed = True
         finally:
             assistant_id = await self._persist_assistant(chat_id, acc, completed=completed)
-        if assistant_id is not None:
+        if completed:
             yield Done(message_id=assistant_id, usage=acc.usage)
 
     async def regenerate_turn(

@@ -81,3 +81,16 @@ async def test_register_missing_field_422(client: AsyncClient) -> None:
     """POST /users without a required field returns 422."""
     resp = await client.post("/users", json={"username": "roman4", "password": "password123"})
     assert resp.status_code == 422
+
+
+async def test_register_whitespace_only_fields_422(client: AsyncClient) -> None:
+    """Whitespace-only registration fields are rejected as blank."""
+    base = {"display_name": "Роман", "username": "roman5", "password": "password123"}
+    for field, value in (
+        ("display_name", "   "),
+        ("username", "   "),
+        ("password", "        "),
+    ):
+        payload = {**base, field: value}
+        resp = await client.post("/users", json=payload)
+        assert resp.status_code == 422, field

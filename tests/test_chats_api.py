@@ -161,6 +161,54 @@ async def test_send_message_stream_error_is_generic(
     assert "Internal server error" in body
 
 
+async def test_empty_agent_reply_still_emits_done(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """A successful but empty model reply must still terminate the SSE stream."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "")
+
+    async with client.stream(
+        "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
+    ) as resp:
+        assert resp.status_code == 200
+        body = ""
+        async for chunk in resp.aiter_text():
+            body += chunk
+
+    assert "event: done" in body
+    assert '"message_id": null' in body
+    fetched = await client.get(f"/chats/{chat_id}")
+    assert [m["role"] for m in fetched.json()["messages"]] == ["user"]
+
+
+async def test_create_chat_blank_title_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only titles are invalid; omit the field to use the default title."""
+    resp = await client.post("/chats", json={"title": "   ", "model": "test-model"})
+    assert resp.status_code == 422
+
+
+async def test_patch_chat_blank_title_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only renames are invalid."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"title": "   "})
+    assert resp.status_code == 422
+
+
+async def test_patch_chat_blank_model_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only model names fail request validation, not provider validation."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"model": "   "})
+    assert resp.status_code == 422
+
+
+async def test_send_whitespace_message_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only messages are not valid user turns."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.post(f"/chats/{chat_id}/messages", json={"content": "   "})
+    assert resp.status_code == 422
+
+
 async def test_get_chat_owned_by_other_user_returns_404(
     client: AsyncClient,
     engine: AsyncEngine,

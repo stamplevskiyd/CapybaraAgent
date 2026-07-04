@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -104,6 +105,33 @@ async def test_stream_turn_does_not_persist_empty_assistant_on_immediate_error(
     async with maker() as check:
         stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
     assert [m.role for m in stored] == ["user"]
+
+
+async def test_begin_turn_touches_chat_when_user_message_is_saved(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """A saved user turn bumps chat recency even if the assistant later fails."""
+    maker = create_sessionmaker(engine)
+    old_time = datetime(2020, 1, 1, tzinfo=UTC)
+    async with maker() as setup:
+        user = await make_user(setup, username="touch_user", display_name="Touch")
+        chat = Chat(user_id=user.id, title="c", model="test-model", updated_at=old_time)
+        setup.add(chat)
+        await setup.commit()
+        user_id, chat_id = user.id, chat.id
+
+    service = ChatService(maker, RaisingAgent(settings, "boom"))
+    model, history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError):
+        async for _ in service.stream_turn(chat_id, model, "Вопрос", history):  # type: ignore[arg-type]
+            pass
+
+    async with maker() as check:
+        reloaded = await check.get(Chat, chat_id)
+        assert reloaded is not None
+        assert reloaded.updated_at > old_time
 
 
 async def test_begin_turn_excludes_incomplete_from_history(

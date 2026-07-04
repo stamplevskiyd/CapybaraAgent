@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Identity, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Identity, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,7 +27,10 @@ class Message(Base, TimestampMixin):
 
     __tablename__ = "messages"
     # Short label only — the naming convention prefixes it to ``ck_messages_role``.
-    __table_args__ = (CheckConstraint(f"role IN ({_ROLE_CHECK})", name="role"),)
+    __table_args__ = (
+        CheckConstraint(f"role IN ({_ROLE_CHECK})", name="role"),
+        Index("ix_messages_chat_id_seq", "chat_id", "seq"),
+    )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     chat_id: Mapped[UUID] = mapped_column(ForeignKey("chats.id"), index=True)

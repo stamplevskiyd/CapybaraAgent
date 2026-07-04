@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from capybara.db.base import Base
@@ -22,6 +22,7 @@ class Chat(Base, TimestampMixin):
     """ORM model representing a chat conversation owned by a user."""
 
     __tablename__ = "chats"
+    __table_args__ = (Index("ix_chats_user_id_updated_at", "user_id", "updated_at"),)
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id"), index=True)

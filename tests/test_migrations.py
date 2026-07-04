@@ -48,3 +48,19 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
             )
         ).scalar_one_or_none()
         assert seq_col == "seq", "messages.seq column missing — migration did not apply"
+
+        indexes = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = 'public' "
+                        "AND tablename IN ('chats', 'messages')"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "ix_chats_user_id_updated_at" in indexes
+        assert "ix_messages_chat_id_seq" in indexes

@@ -81,7 +81,9 @@ Indexes: `messages.chat_id`, `chats.user_id`. Timestamps in UTC.
 ### SSE event schema (`POST /chats/{id}/messages`)
 
 - `event: delta` — `data: { "text": "<chunk>" }` (repeated)
-- `event: done`  — `data: { "message_id": "<uuid>", "usage": {...} }`
+- `event: done`  — `data: { "message_id": "<uuid>" | null, "usage": {...} }`
+  (`null` only when the provider completes with no assistant text and no blank assistant
+  row is persisted).
 - `event: error` — `data: { "message": "<safe message>" }`
 
 The user message is persisted before streaming begins, so a failed stream still leaves a

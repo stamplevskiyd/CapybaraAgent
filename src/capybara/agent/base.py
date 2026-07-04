@@ -25,8 +25,8 @@ TITLE_SYSTEM_PROMPT = (
     "end, no preamble."
 )
 
-#: Maximum length of a generated/fallback title.
-_TITLE_MAX = 60
+#: Maximum length of a generated/fallback title, matching ``chats.title``.
+_TITLE_MAX = 200
 
 
 def _clean_title(raw: str, *, fallback: str) -> str:

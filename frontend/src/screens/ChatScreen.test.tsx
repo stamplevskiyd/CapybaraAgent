@@ -1,4 +1,4 @@
-import { render, screen, waitForElementToBeRemoved } from '@testing-library/react'
+import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { server, http, HttpResponse } from '../test/msw'
 import { AuthProvider } from '../auth/AuthContext'
@@ -106,6 +106,37 @@ test('Enter is blocked when no valid model is selected', async () => {
   expect(postChatsCallCount).toBe(0)
   // Welcome screen must still be visible — activeChatId was not set
   expect(screen.getByText(/Чем помочь/)).toBeInTheDocument()
+})
+
+test('a failed favorite toggle is rolled back to the server state', async () => {
+  const chat = {
+    id: 'c1',
+    title: 'Мой чат',
+    model: 'llama3.1:8b',
+    is_favorite: false,
+    created_at: new Date().toISOString(),
+    updated_at: '',
+  }
+  let patchCalls = 0
+  server.use(
+    http.get('/api/models', () => HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] })),
+    http.get('/api/chats', () => HttpResponse.json([chat])),
+    http.patch('/api/chats/c1', () => {
+      patchCalls++
+      return new HttpResponse('boom', { status: 500 })
+    }),
+  )
+  render(
+    <AuthProvider>
+      <ChatScreen />
+    </AuthProvider>,
+  )
+  const star = await screen.findByLabelText('В избранное')
+  await userEvent.click(star)
+  // The PATCH was attempted...
+  await waitFor(() => expect(patchCalls).toBe(1))
+  // ...and because it failed, the optimistic flip is reverted (star shows "add" again).
+  await waitFor(() => expect(screen.getByLabelText('В избранное')).toBeInTheDocument())
 })
 
 test('shows a loading indicator while chat history is being fetched', async () => {

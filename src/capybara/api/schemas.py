@@ -3,7 +3,24 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _strip_required_text(value: object) -> object:
+    """Strip a text field and reject it when only whitespace remains."""
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+    return value
+
+
+def _reject_blank_text(value: str) -> str:
+    """Reject a text field that contains only whitespace while preserving the original."""
+    if not value.strip():
+        raise ValueError("must not be blank")
+    return value
 
 
 class UserCreate(BaseModel):
@@ -12,6 +29,18 @@ class UserCreate(BaseModel):
     display_name: str = Field(min_length=1, max_length=128)
     username: str = Field(min_length=3, max_length=64)
     password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("display_name", "username", mode="before")
+    @classmethod
+    def _strip_identity_fields(cls, value: object) -> object:
+        """Trim public identity fields and reject whitespace-only values."""
+        return _strip_required_text(value)
+
+    @field_validator("password")
+    @classmethod
+    def _password_not_blank(cls, value: str) -> str:
+        """Reject whitespace-only passwords without otherwise changing them."""
+        return _reject_blank_text(value)
 
 
 class UserOut(BaseModel):
@@ -31,6 +60,14 @@ class ChatCreate(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     model: str | None = Field(default=None, max_length=128)
 
+    @field_validator("title", "model", mode="before")
+    @classmethod
+    def _strip_optional_text(cls, value: object) -> object:
+        """Trim optional text fields when provided and reject whitespace-only values."""
+        if value is None:
+            return None
+        return _strip_required_text(value)
+
 
 class ChatUpdate(BaseModel):
     """Partial update for a chat: any of title, model, or favorite. At least one required."""
@@ -38,6 +75,14 @@ class ChatUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=200)
     model: str | None = Field(default=None, min_length=1, max_length=128)
     is_favorite: bool | None = None
+
+    @field_validator("title", "model", mode="before")
+    @classmethod
+    def _strip_optional_text(cls, value: object) -> object:
+        """Trim optional text fields when provided and reject whitespace-only values."""
+        if value is None:
+            return None
+        return _strip_required_text(value)
 
     @model_validator(mode="after")
     def _require_one(self) -> ChatUpdate:
@@ -58,6 +103,12 @@ class MessageCreate(BaseModel):
     """Payload for sending a message."""
 
     content: str = Field(min_length=1, max_length=100_000)
+
+    @field_validator("content")
+    @classmethod
+    def _content_not_blank(cls, value: str) -> str:
+        """Reject whitespace-only user messages while preserving intentional spacing."""
+        return _reject_blank_text(value)
 
 
 class MessageOut(BaseModel):
@@ -97,6 +148,18 @@ class LoginRequest(BaseModel):
 
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def _strip_username(cls, value: object) -> object:
+        """Trim the login username and reject whitespace-only values."""
+        return _strip_required_text(value)
+
+    @field_validator("password")
+    @classmethod
+    def _login_password_not_blank(cls, value: str) -> str:
+        """Reject whitespace-only login passwords."""
+        return _reject_blank_text(value)
 
 
 class TokenResponse(BaseModel):

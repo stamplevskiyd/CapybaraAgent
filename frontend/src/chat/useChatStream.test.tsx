@@ -68,6 +68,32 @@ test('cancel stops an in-flight stream and settles the message', async () => {
   expect(assistant.error).toBeFalsy()
 })
 
+test('switching to another chat aborts the in-flight stream', async () => {
+  server.use(
+    http.post('/api/chats/c1/messages', () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('event: delta\ndata: {"text":"partial"}\n\n'))
+          // never closes; navigating away must abort it
+        },
+      })
+      return new HttpResponse(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+    }),
+  )
+  const { result, rerender } = renderHook(({ id }) => useChatStream(id), {
+    wrapper,
+    initialProps: { id: 'c1' as string | null },
+  })
+  act(() => {
+    void result.current.send('Привет')
+  })
+  await waitFor(() => expect(result.current.sending).toBe(true))
+  // Navigate to a different chat while the stream is still open.
+  rerender({ id: 'c2' })
+  // The stream for c1 must be aborted so the composer is freed.
+  await waitFor(() => expect(result.current.sending).toBe(false))
+})
+
 test('invokes onTitle when a title event arrives', async () => {
   const onTitle = vi.fn()
   server.use(

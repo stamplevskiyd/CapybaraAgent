@@ -43,11 +43,12 @@ Existing endpoints (branch `feature/chat-core-backend`, not yet merged to `main`
 | `POST` | `/chats` | Create chat `{title?}` → `ChatOut` (201) |
 | `GET` | `/chats/{id}` | Chat + full message history (`ChatDetailOut`) |
 | `POST` | `/chats/{id}/messages` | `{content}` → **SSE** stream of `delta` / `done` / `error` |
+| `GET` | `/users/me` | Current authenticated public profile |
 | `GET` | `/health` | Liveness |
 
 Auth is **stateless JWT**: send `Authorization: Bearer <token>`; logout = client discards
-the token. There is **no** `GET /users/me` endpoint — the frontend derives the displayed
-user from what it knows locally (see §6).
+the token. `GET /users/me` returns the public profile used to hydrate the displayed user
+after login (see §6).
 
 SSE event shapes (from `chats.py`):
 - `event: delta`  `data: {"text": "..."}`
@@ -113,11 +114,10 @@ take props; screens compose them. This keeps files small and independently testa
 ## 6. Data flow
 
 **Auth.** `AuthContext` holds `{ token, user }`. On login/register it calls the API,
-stores the token in `localStorage`, and sets `view='chat'`. Since there's no
-`GET /users/me`: register returns `UserOut` (use it directly); login returns only a token,
-so we cache the entered `username` alongside the token and show that (display name falls
-back to username until a profile endpoint exists — noted as a future refinement). `logout`
-clears storage and returns to `view='auth'`. A `401` from any API call triggers auto-logout.
+stores the token in `localStorage`, and sets `view='chat'`. Login returns only a token, so
+the frontend immediately calls `GET /users/me` with that token, stores the returned
+`username`/`display_name`, and shows the real display name. `logout` clears storage and
+returns to `view='auth'`. A `401` from any API call triggers auto-logout.
 
 **Chat list.** `useChats` loads `GET /chats` on entering the chat view; "New chat" calls
 `POST /chats` and selects the result (welcome state). Search filters the loaded list
