@@ -1,8 +1,9 @@
-/** Sidebar navigation panel: logo, new-chat button, search, chat list, deferred nav, user card. */
+/** Sidebar: logo, new-chat, search, favorites + date-grouped chat list, deferred nav, user card. */
 import { useState } from 'react'
-import { Plus, Search, Brain, Clock, Settings } from 'lucide-react'
+import { Plus, Search, Brain, Clock, Settings, Star } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { ChatListItem } from './ChatListItem'
+import { ChatContextMenu } from './ChatContextMenu'
 import { UserCard } from './UserCard'
 import { useAuth } from '../auth/AuthContext'
 import type { ChatOut } from '../api/types'
@@ -14,23 +15,16 @@ function groupChats(chats: ChatOut[]): { label: string; items: ChatOut[] }[] {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const yesterday = new Date(today)
   yesterday.setDate(today.getDate() - 1)
-
   const todayItems: ChatOut[] = []
   const yesterdayItems: ChatOut[] = []
   const earlierItems: ChatOut[] = []
-
   for (const chat of chats) {
     const d = new Date(chat.created_at)
     const chatDay = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-    if (chatDay >= today) {
-      todayItems.push(chat)
-    } else if (chatDay >= yesterday) {
-      yesterdayItems.push(chat)
-    } else {
-      earlierItems.push(chat)
-    }
+    if (chatDay >= today) todayItems.push(chat)
+    else if (chatDay >= yesterday) yesterdayItems.push(chat)
+    else earlierItems.push(chat)
   }
-
   const groups: { label: string; items: ChatOut[] }[] = []
   if (todayItems.length) groups.push({ label: 'Сегодня', items: todayItems })
   if (yesterdayItems.length) groups.push({ label: 'Вчера', items: yesterdayItems })
@@ -38,26 +32,52 @@ function groupChats(chats: ChatOut[]): { label: string; items: ChatOut[] }[] {
   return groups
 }
 
-/** Full sidebar: logo lockup, new-chat, search filter, grouped chat list, disabled deferred nav, user card. */
+/** Full sidebar: logo lockup, new-chat, search filter, favorites + date-grouped chat list, disabled deferred nav, user card. */
 export function Sidebar({
   chats,
   activeChatId,
   onSelect,
   onNewChat,
+  onToggleFavorite,
+  onRename,
+  onDelete,
 }: {
   chats: ChatOut[]
   activeChatId: string | null
   onSelect: (id: string) => void
   onNewChat: () => void
+  onToggleFavorite: (id: string) => void
+  onRename: (id: string, title: string) => void
+  onDelete: (id: string) => void
 }) {
   const { user } = useAuth()
   const [query, setQuery] = useState('')
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
 
   const filtered = query
     ? chats.filter((c) => c.title.toLowerCase().includes(query.toLowerCase()))
     : chats
+  const favorites = filtered.filter((c) => c.is_favorite)
+  const dateGroups = groupChats(filtered.filter((c) => !c.is_favorite))
+  const menuChat = menu ? chats.find((c) => c.id === menu.id) : undefined
 
-  const groups = groupChats(filtered)
+  const renderItem = (chat: ChatOut) => (
+    <ChatListItem
+      key={chat.id}
+      chat={chat}
+      active={chat.id === activeChatId}
+      renaming={renamingId === chat.id}
+      onSelect={() => onSelect(chat.id)}
+      onToggleFavorite={() => onToggleFavorite(chat.id)}
+      onOpenMenu={(rect) => setMenu({ id: chat.id, x: rect.left, y: rect.bottom + 4 })}
+      onRenameCommit={(title) => {
+        setRenamingId(null)
+        onRename(chat.id, title)
+      }}
+      onRenameCancel={() => setRenamingId(null)}
+    />
+  )
 
   return (
     <aside className={styles.sidebar}>
@@ -92,17 +112,18 @@ export function Sidebar({
       </div>
 
       <div className={styles.chatList}>
-        {groups.map((group) => (
+        {favorites.length > 0 && (
+          <div>
+            <div className={styles.groupLabel}>
+              <Star size={11} fill="currentColor" className={styles.groupStar} /> Избранное
+            </div>
+            {favorites.map(renderItem)}
+          </div>
+        )}
+        {dateGroups.map((group) => (
           <div key={group.label}>
             <div className={styles.groupLabel}>{group.label}</div>
-            {group.items.map((chat) => (
-              <ChatListItem
-                key={chat.id}
-                chat={chat}
-                active={chat.id === activeChatId}
-                onSelect={() => onSelect(chat.id)}
-              />
-            ))}
+            {group.items.map(renderItem)}
           </div>
         ))}
       </div>
@@ -123,6 +144,27 @@ export function Sidebar({
         </div>
         <UserCard />
       </div>
+
+      {menu && menuChat && (
+        <ChatContextMenu
+          x={menu.x}
+          y={menu.y}
+          isFavorite={menuChat.is_favorite}
+          onRename={() => {
+            setRenamingId(menu.id)
+            setMenu(null)
+          }}
+          onToggleFavorite={() => {
+            onToggleFavorite(menu.id)
+            setMenu(null)
+          }}
+          onDelete={() => {
+            onDelete(menu.id)
+            setMenu(null)
+          }}
+          onClose={() => setMenu(null)}
+        />
+      )}
     </aside>
   )
 }

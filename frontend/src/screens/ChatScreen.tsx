@@ -10,7 +10,7 @@ import { useChats } from '../chat/useChats'
 import { useModels } from '../chat/useModels'
 import { useChatStream } from '../chat/useChatStream'
 import { useChatRuntime } from '../chat/runtime'
-import { patchChatModel } from '../chat/chatApi'
+import { deleteChat, renameChat, setFavorite, patchChatModel } from '../chat/chatApi'
 import { loadLastModel, saveLastModel } from '../chat/lastModel'
 import styles from './ChatScreen.module.css'
 
@@ -50,10 +50,12 @@ export function ChatScreen() {
   /** Set to true before updating activeChatId for a brand-new chat to skip history load. */
   const skipLoadHistory = useRef(false)
 
-  const { chats, reload, newChat } = useChats()
+  const { chats, reload, newChat, patchLocal, removeLocal } = useChats()
   const { models } = useModels()
   const { messages, sending, loadingHistory, send, loadHistory, cancel, regenerate } =
-    useChatStream(activeChatId)
+    useChatStream(activeChatId, (title) => {
+      if (activeChatId) patchLocal(activeChatId, { title })
+    })
 
   /**
    * Load history whenever the active chat changes.
@@ -99,6 +101,27 @@ export function ChatScreen() {
     onCancel: cancel,
   })
 
+  /** Toggle favorite: optimistic local flip, then persist. */
+  async function handleToggleFavorite(id: string) {
+    const chat = chats.find((c) => c.id === id)
+    const next = !(chat?.is_favorite ?? false)
+    patchLocal(id, { is_favorite: next })
+    await setFavorite(api, id, next)
+  }
+
+  /** Rename: optimistic local update, then persist. */
+  async function handleRename(id: string, title: string) {
+    patchLocal(id, { title })
+    await renameChat(api, id, title)
+  }
+
+  /** Delete: remove locally (returning to welcome if it was active), then persist. */
+  async function handleDelete(id: string) {
+    if (id === activeChatId) setActiveChatId(null)
+    removeLocal(id)
+    await deleteChat(api, id)
+  }
+
   /** Update the selected model; persists to localStorage, updates draft, and PATCHes the active chat if open. */
   async function handleSelectModel(model: string) {
     saveLastModel(model)
@@ -117,6 +140,9 @@ export function ChatScreen() {
           activeChatId={activeChatId}
           onSelect={setActiveChatId}
           onNewChat={() => setActiveChatId(null)}
+          onToggleFavorite={handleToggleFavorite}
+          onRename={handleRename}
+          onDelete={handleDelete}
         />
         <main className={styles.main}>
           {activeChatId === null ? (

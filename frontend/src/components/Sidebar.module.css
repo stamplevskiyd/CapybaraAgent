@@ -103,11 +103,19 @@
 }
 
 .groupLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   padding: 8px 18px 4px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
   color: #726a61;
+}
+
+.groupStar {
+  color: var(--accent, #d89b6c);
+  margin-top: -1px;
 }
 
 /* ── Chat item (used by ChatListItem) ── */

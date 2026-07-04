@@ -25,7 +25,7 @@ beforeEach(() =>
 
 test('welcome greets the user and streams a reply after sending', async () => {
   localStorage.setItem('capybara.lastModel', 'llama3.1:8b')
-  const chat = { id: 'c1', title: 'Новый чат', model: 'llama3.1:8b', created_at: '', updated_at: '' }
+  const chat = { id: 'c1', title: 'Новый чат', model: 'llama3.1:8b', is_favorite: false, created_at: '', updated_at: '' }
   server.use(
     http.get('/api/models', () =>
       HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
@@ -87,7 +87,7 @@ test('Enter is blocked when no valid model is selected', async () => {
     http.post('/api/chats', () => {
       postChatsCallCount++
       return HttpResponse.json(
-        { id: 'c1', title: 'Новый чат', model: 'llama3.1:8b', created_at: '', updated_at: '' },
+        { id: 'c1', title: 'Новый чат', model: 'llama3.1:8b', is_favorite: false, created_at: '', updated_at: '' },
         { status: 201 },
       )
     }),
@@ -113,6 +113,7 @@ test('shows a loading indicator while chat history is being fetched', async () =
     id: 'c2',
     title: 'Мой чат',
     model: 'llama3.1:8b',
+    is_favorite: false,
     created_at: new Date().toISOString(),
     updated_at: '',
   }
