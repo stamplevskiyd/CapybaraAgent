@@ -76,6 +76,38 @@ test('composer lists fetched models and blocks send until a model is valid', asy
   expect(sendBtn).not.toBeDisabled()
 })
 
+test('Enter is blocked when no valid model is selected', async () => {
+  localStorage.removeItem('capybara.lastModel')
+  let postChatsCallCount = 0
+  server.use(
+    http.get('/api/models', () =>
+      HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
+    ),
+    http.get('/api/chats', () => HttpResponse.json([])),
+    http.post('/api/chats', () => {
+      postChatsCallCount++
+      return HttpResponse.json(
+        { id: 'c1', title: 'Новый чат', model: 'llama3.1:8b', created_at: '', updated_at: '' },
+        { status: 201 },
+      )
+    }),
+  )
+  render(
+    <AuthProvider>
+      <ChatScreen />
+    </AuthProvider>,
+  )
+  await screen.findByText(/Чем помочь/)
+  // Type text and press Enter WITHOUT selecting a model first (draftModel is null)
+  await userEvent.type(screen.getByRole('textbox'), 'Привет{Enter}')
+  // Allow any async operations (network requests) a moment to settle
+  await new Promise<void>((r) => setTimeout(r, 100))
+  // Send must be blocked: no chat was created
+  expect(postChatsCallCount).toBe(0)
+  // Welcome screen must still be visible — activeChatId was not set
+  expect(screen.getByText(/Чем помочь/)).toBeInTheDocument()
+})
+
 test('shows a loading indicator while chat history is being fetched', async () => {
   const chat = {
     id: 'c2',

@@ -67,12 +67,18 @@ export function ChatScreen() {
     void loadHistory()
   }, [loadHistory])
 
+  const activeChat = chats.find((c) => c.id === activeChatId)
+  const selectedModel = activeChatId ? (activeChat?.model ?? null) : draftModel
+
   /**
    * Send a message.
    * If no chat is active, creates one first and sends with the chatId override (no deferral).
    * If a chat is already active, sends immediately.
+   * No-ops when no valid model is selected — guards the Enter path as well as the button.
    */
   async function handleSend(text: string) {
+    const modelValid = selectedModel !== null && models.includes(selectedModel)
+    if (!modelValid) return
     if (activeChatId) {
       await send(text)
       await reload()
@@ -102,9 +108,6 @@ export function ChatScreen() {
       await reload()
     }
   }
-
-  const activeChat = chats.find((c) => c.id === activeChatId)
-  const selectedModel = activeChatId ? (activeChat?.model ?? null) : draftModel
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
