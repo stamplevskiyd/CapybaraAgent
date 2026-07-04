@@ -28,12 +28,28 @@ function UserMessage() {
   )
 }
 
+/** Three-dot "thinking" indicator shown on the last assistant message before its first token. */
+function TypingIndicator() {
+  return (
+    <div className={styles.typing} role="status" aria-label="Модель печатает">
+      <span className={styles.typingDot} />
+      <span className={styles.typingDot} />
+      <span className={styles.typingDot} />
+    </div>
+  )
+}
+
 /**
  * Assistant message: CapyLogo avatar + markdown content + hover action bar (Copy / Reload).
  *
  * Passes MarkdownText as the Text renderer so that MarkdownTextPrimitive reads the message
  * content from the assistant-ui context, applies GFM + sanitize, and routes fenced code
  * blocks to CodeBlock.
+ *
+ * While the last assistant message is still empty (streaming, before its first token) a
+ * typing indicator is shown so the reply never looks frozen. The action bar appears only
+ * once there is content, and Reload (regenerate) is gated to the last message — regenerating
+ * always targets the latest turn, so offering it on older replies would mislead.
  */
 function AssistantMessage() {
   return (
@@ -43,14 +59,24 @@ function AssistantMessage() {
       </div>
       <div className={styles.assistantContent}>
         <MessagePrimitive.Content components={{ Text: MarkdownText }} />
-        <ActionBarPrimitive.Root className={styles.actions}>
-          <ActionBarPrimitive.Copy className={styles.actionBtn}>
-            <Copy size={15} />
-          </ActionBarPrimitive.Copy>
-          <ActionBarPrimitive.Reload className={styles.actionBtn}>
-            <RefreshCw size={15} />
-          </ActionBarPrimitive.Reload>
-        </ActionBarPrimitive.Root>
+        <MessagePrimitive.If last hasContent={false}>
+          <TypingIndicator />
+        </MessagePrimitive.If>
+        <MessagePrimitive.If hasContent>
+          <ActionBarPrimitive.Root className={styles.actions}>
+            <ActionBarPrimitive.Copy className={styles.actionBtn}>
+              <Copy size={15} />
+            </ActionBarPrimitive.Copy>
+            <MessagePrimitive.If last>
+              <ActionBarPrimitive.Reload
+                className={styles.actionBtn}
+                aria-label="Перегенерировать ответ"
+              >
+                <RefreshCw size={15} />
+              </ActionBarPrimitive.Reload>
+            </MessagePrimitive.If>
+          </ActionBarPrimitive.Root>
+        </MessagePrimitive.If>
       </div>
     </MessagePrimitive.Root>
   )

@@ -68,3 +68,62 @@ test('fenced code block renders CodeBlock copy button (Task 5 gap)', () => {
   // If this assertion FAILS, MarkdownTextPrimitive does NOT honour our components.code override.
   expect(screen.getByRole('button', { name: /копировать/i })).toBeInTheDocument()
 })
+
+/** Seed with N assistant turns so "last message" gating can be exercised. */
+function seedMessages(messages: Parameters<typeof useChatRuntime>[0]['messages'], isRunning = false) {
+  const { result } = renderHook(() =>
+    useChatRuntime({
+      messages,
+      isRunning,
+      onSend: vi.fn().mockResolvedValue(undefined),
+      onReload: vi.fn().mockResolvedValue(undefined),
+      onCancel: vi.fn(),
+    }),
+  )
+  return result.current
+}
+
+test('regenerate action appears only on the last assistant message', () => {
+  const runtime = seedMessages([
+    { id: 'u1', role: 'user', content: 'Раз', streaming: false },
+    { id: 'a1', role: 'assistant', content: 'Первый ответ', streaming: false },
+    { id: 'u2', role: 'user', content: 'Два', streaming: false },
+    { id: 'a2', role: 'assistant', content: 'Второй ответ', streaming: false },
+  ])
+  render(
+    <AssistantRuntimeProvider runtime={runtime}>
+      <Thread />
+    </AssistantRuntimeProvider>,
+  )
+  // Two assistant messages, but Reload is gated to the last one → exactly one button.
+  expect(screen.getAllByRole('button', { name: /перегенерировать/i })).toHaveLength(1)
+})
+
+test('shows a typing indicator on the last assistant message before its first token', () => {
+  const runtime = seedMessages(
+    [
+      { id: 'u1', role: 'user', content: 'Вопрос', streaming: false },
+      { id: 'a1', role: 'assistant', content: '', streaming: true },
+    ],
+    true,
+  )
+  render(
+    <AssistantRuntimeProvider runtime={runtime}>
+      <Thread />
+    </AssistantRuntimeProvider>,
+  )
+  expect(screen.getByRole('status', { name: 'Модель печатает' })).toBeInTheDocument()
+})
+
+test('no typing indicator once the assistant message has content', () => {
+  const runtime = seedMessages([
+    { id: 'u1', role: 'user', content: 'Вопрос', streaming: false },
+    { id: 'a1', role: 'assistant', content: 'Готовый ответ', streaming: false },
+  ])
+  render(
+    <AssistantRuntimeProvider runtime={runtime}>
+      <Thread />
+    </AssistantRuntimeProvider>,
+  )
+  expect(screen.queryByRole('status', { name: 'Модель печатает' })).not.toBeInTheDocument()
+})
