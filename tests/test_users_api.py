@@ -52,9 +52,7 @@ async def test_register_success(client: AsyncClient, engine) -> None:  # type: i
     from capybara.db.engine import create_sessionmaker
 
     async with create_sessionmaker(engine)() as sess:
-        user = (
-            await sess.execute(select(User).where(User.username == "roman"))
-        ).scalar_one()
+        user = (await sess.execute(select(User).where(User.username == "roman"))).scalar_one()
         assert user.password_hash.startswith("$argon2")
         assert user.password_hash != "password123"
 

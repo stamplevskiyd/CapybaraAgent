@@ -23,7 +23,7 @@ from capybara.services.user_service import UserService
 _bearer = HTTPBearer(auto_error=False)
 
 
-async def get_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+async def get_session(request: Request) -> AsyncGenerator[AsyncSession]:
     """Yield an AsyncSession, committing on success or rolling back on error."""
     maker = cast(async_sessionmaker[AsyncSession], request.app.state.sessionmaker)
     async with maker() as session:

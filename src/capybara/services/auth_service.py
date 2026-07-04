@@ -12,9 +12,7 @@ class InvalidCredentials(Exception):
 class AuthService:
     """Orchestrate login and JWT issuance."""
 
-    def __init__(
-        self, users: UserRepo, *, secret: str, ttl_minutes: int, algorithm: str
-    ) -> None:
+    def __init__(self, users: UserRepo, *, secret: str, ttl_minutes: int, algorithm: str) -> None:
         self._users = users
         self._secret = secret
         self._ttl_minutes = ttl_minutes

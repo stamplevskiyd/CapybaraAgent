@@ -24,7 +24,7 @@ async def client(
 
     maker = create_sessionmaker(engine)
 
-    async def _override_session() -> AsyncGenerator[AsyncSession, None]:
+    async def _override_session() -> AsyncGenerator[AsyncSession]:
         async with maker() as sess:
             yield sess
 

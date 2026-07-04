@@ -29,7 +29,9 @@ def test_database_url_percent_encodes_credentials(monkeypatch):
     monkeypatch.setenv("POSTGRES_HOST", "db.host")
     monkeypatch.setenv("JWT_SECRET", "env-secret-that-is-at-least-32-chars!")
     settings = Settings()
-    assert settings.database_url == "postgresql+asyncpg://user:p%40ss%3Aw%2Frd@db.host:5432/capybara"
+    assert (
+        settings.database_url == "postgresql+asyncpg://user:p%40ss%3Aw%2Frd@db.host:5432/capybara"
+    )
 
 
 def test_settings_rejects_short_jwt_secret(monkeypatch):
