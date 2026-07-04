@@ -71,8 +71,10 @@ class BaseAgent(ABC):
             ModelUnavailableError: If *model_name* is ``None`` or absent from the list.
             ModelProviderError: If the provider cannot be reached (from ``list_models``).
         """
+        if not model_name:
+            raise ModelUnavailableError(model_name, [])
         available = await self.list_models()
-        if not model_name or model_name not in available:
+        if model_name not in available:
             raise ModelUnavailableError(model_name, available)
 
     @staticmethod

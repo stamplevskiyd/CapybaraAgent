@@ -20,17 +20,18 @@ class OllamaAgent(BaseAgent):
         """Return installed model names from Ollama's ``/api/tags`` endpoint.
 
         Raises:
-            ModelProviderError: If Ollama cannot be reached or returns an error status.
+            ModelProviderError: If Ollama cannot be reached, returns an error status,
+                or returns a body that is not the expected JSON shape.
         """
         url = f"{self._settings.ollama_base_url}/api/tags"
         try:
             async with self._client_factory() as client:
                 response = await client.get(url)
                 response.raise_for_status()
-        except httpx.HTTPError as exc:
+            data = response.json()
+            return [entry["name"] for entry in data.get("models", [])]
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise ModelProviderError(self._settings.ollama_base_url) from exc
-        data = response.json()
-        return [entry["name"] for entry in data.get("models", [])]
 
     def _build_model(self, name: str) -> Model:
         """Build an OpenAI-compatible model pointed at the Ollama server."""
