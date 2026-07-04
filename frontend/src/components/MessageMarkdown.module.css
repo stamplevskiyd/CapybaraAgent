@@ -1,0 +1,12 @@
+/* Markdown renderer styles for assistant messages — handoff palette. */
+.markdown { font-size: 14.5px; line-height: 1.62; color: #e8dfd5; }
+.markdown p { margin: 0 0 10px; }
+.markdown strong { color: #f2ece4; font-weight: 600; }
+.markdown a { color: var(--accent, #d89b6c); text-decoration: underline; }
+.markdown ul, .markdown ol { margin: 8px 0; padding-left: 22px; }
+.markdown li { margin: 3px 0; }
+.markdown blockquote { border-left: 2px solid rgba(216, 155, 108, 0.4); margin: 10px 0; padding-left: 12px; color: #c9c0b6; }
+.inlineCode { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; background: rgba(255, 255, 255, 0.06); padding: 1px 5px; border-radius: 5px; }
+.markdown table { border-collapse: collapse; margin: 10px 0; width: 100%; font-size: 13.5px; }
+.markdown th, .markdown td { border: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 10px; text-align: left; }
+.markdown th { background: rgba(255, 255, 255, 0.04); color: #f2ece4; font-weight: 600; }
