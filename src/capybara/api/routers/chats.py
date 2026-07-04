@@ -8,7 +8,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.agent.base import BaseAgent, ModelProviderError, ModelUnavailableError
 from capybara.api.dependencies import (
@@ -18,7 +17,6 @@ from capybara.api.dependencies import (
     get_current_user,
     get_message_repo,
     get_owned_chat,
-    get_session,
 )
 from capybara.api.schemas import (
     ChatCreate,
@@ -90,7 +88,6 @@ async def update_chat_model(
     chat: Annotated[Chat, Depends(get_owned_chat)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
     agent: Annotated[BaseAgent, Depends(get_agent)],
-    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> ChatOut:
     """Set the chat's model after validating it is installed; 404 if not owned."""
     try:
@@ -98,7 +95,6 @@ async def update_chat_model(
     except (ModelUnavailableError, ModelProviderError) as exc:
         _raise_for_model_error(exc)
     updated = await chats.update(chat, model=payload.model)
-    await session.refresh(updated)
     return ChatOut.model_validate(updated)
 
 
