@@ -379,3 +379,31 @@ async def test_generate_title_sets_title_only_when_default(
 
         assert (await ChatRepo(check).get(default_id)).title == "Сгенерённый заголовок"  # type: ignore[union-attr]
         assert (await ChatRepo(check).get(named_id)).title == "Моё имя"  # type: ignore[union-attr]
+
+
+async def test_generate_title_keeps_default_when_output_blank(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """A blank generated title never overwrites the default title."""
+    from capybara.db.models.chat import DEFAULT_CHAT_TITLE
+    from capybara.repositories.chat_repo import ChatRepo
+
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup, username="blanktitle", display_name="B")
+        chat = Chat(user_id=user.id, model="test-model")  # default title
+        setup.add(chat)
+        await setup.commit()
+        chat_id = chat.id
+
+    # FakeAgent with empty output → _clean_title falls back to the (whitespace) message → "".
+    service = ChatService(maker, FakeAgent(settings, ""))
+    result = await service.generate_title(chat_id, "   ")
+    assert result is None
+
+    async with maker() as check:
+        reloaded = await ChatRepo(check).get(chat_id)
+        assert reloaded is not None
+        assert reloaded.title == DEFAULT_CHAT_TITLE

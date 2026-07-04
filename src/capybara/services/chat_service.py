@@ -170,6 +170,8 @@ class ChatService:
                 if chat is None or chat.title != DEFAULT_CHAT_TITLE or chat.model is None:
                     return None
                 title = await self._agent.generate_title(chat.model, first_user_message)
+                if not title.strip():
+                    return None
                 await chats.update(chat, title=title)
                 await session.commit()
                 return title
