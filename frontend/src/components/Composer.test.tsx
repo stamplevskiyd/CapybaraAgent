@@ -26,8 +26,15 @@ test('Send routes text through the runtime onSend', async () => {
   expect(onSend).toHaveBeenCalledWith('Привет')
 })
 
-test('send disabled without a valid model', () => {
+test('send disabled without a valid model', async () => {
   withRuntime(() => <Composer models={MODELS} selectedModel={null} onSelectModel={vi.fn()} />)
+  await userEvent.type(screen.getByRole('textbox'), 'Привет')
+  expect(screen.getByLabelText('Отправить')).toBeDisabled()
+})
+
+test('blocks send when selected model is not in the list', async () => {
+  withRuntime(() => <Composer models={MODELS} selectedModel="removed:1b" onSelectModel={vi.fn()} />)
+  await userEvent.type(screen.getByRole('textbox'), 'Привет')
   expect(screen.getByLabelText('Отправить')).toBeDisabled()
 })
 
