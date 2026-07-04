@@ -30,7 +30,7 @@ from capybara.db.models import Chat, Message, User
 from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
-from capybara.services.chat_service import ChatNotFoundError, ChatService
+from capybara.services.chat_service import ChatNotFoundError, ChatService, NoUserMessageError
 from capybara.services.events import Delta, Done
 
 logger = logging.getLogger(__name__)
@@ -99,6 +99,7 @@ async def update_chat_model(
 
 
 def _sse(event: str, data: dict[str, object]) -> str:
+    """Format a single SSE frame as ``event: <name>`` / ``data: <json>``."""
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
@@ -107,6 +108,21 @@ def _raise_for_model_error(exc: ModelUnavailableError | ModelProviderError) -> N
     if isinstance(exc, ModelProviderError):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+# Headers that every SSE streaming response must carry.  Applied to both
+# send_message and regenerate so the Vite dev proxy, nginx, and the browser
+# all know this is a live stream and must not buffer chunks.
+_SSE_HEADERS: dict[str, str] = {
+    # Prevent the Vite dev proxy and browser fetch from buffering the
+    # response — chunks must arrive incrementally so assistant tokens
+    # appear in real time rather than all at once (or not at all).
+    "Cache-Control": "no-cache",
+    # Disable nginx upstream buffering in production.
+    "X-Accel-Buffering": "no",
+    # Keep the TCP connection open for the duration of the stream.
+    "Connection": "keep-alive",
+}
 
 
 @router.post("/{chat_id}/messages")
@@ -148,14 +164,53 @@ async def send_message(
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={
-            # Prevent the Vite dev proxy and browser fetch from buffering the
-            # response — chunks must arrive incrementally so assistant tokens
-            # appear in real time rather than all at once (or not at all).
-            "Cache-Control": "no-cache",
-            # Disable nginx upstream buffering in production.
-            "X-Accel-Buffering": "no",
-            # Keep the TCP connection open for the duration of the stream.
-            "Connection": "keep-alive",
-        },
+        headers=_SSE_HEADERS,
+    )
+
+
+@router.post("/{chat_id}/messages/regenerate")
+async def regenerate_message(
+    chat_id: UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    service: Annotated[ChatService, Depends(get_chat_service)],
+) -> StreamingResponse:
+    """Delete the trailing assistant reply and stream a fresh one via SSE.
+
+    No new user message is written — this endpoint regenerates the assistant
+    reply for the last existing user message.  Ownership is verified and the
+    old assistant row(s) are removed before any SSE bytes are sent.
+    """
+    try:
+        model, last_user_content, history = await service.regenerate_turn(user.id, chat_id)
+    except ChatNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
+        ) from None
+    except NoUserMessageError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="No user message to regenerate"
+        ) from None
+    except (ModelUnavailableError, ModelProviderError) as exc:
+        _raise_for_model_error(exc)
+
+    async def event_stream() -> AsyncIterator[str]:
+        try:
+            async for event in service.stream_turn(
+                chat_id, model, last_user_content, history
+            ):
+                if isinstance(event, Delta):
+                    yield _sse("delta", {"text": event.text})
+                elif isinstance(event, Done):
+                    yield _sse(
+                        "done",
+                        {"message_id": event.message_id, "usage": event.usage},
+                    )
+        except Exception:  # surface a generic SSE error, never a broken stream
+            logger.exception("regenerate stream failed for chat %s", chat_id)
+            yield _sse("error", {"message": "Internal server error while streaming the reply"})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers=_SSE_HEADERS,
     )

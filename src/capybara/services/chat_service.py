@@ -18,7 +18,17 @@ class ChatNotFoundError(Exception):
     """Raised when a chat does not exist or is not owned by the requesting user."""
 
     def __init__(self, chat_id: UUID) -> None:
+        """Record the missing chat id."""
         super().__init__(f"Chat {chat_id} not found")
+        self.chat_id = chat_id
+
+
+class NoUserMessageError(Exception):
+    """Raised when regenerate is requested on a chat that has no user messages."""
+
+    def __init__(self, chat_id: UUID) -> None:
+        """Record the chat id that contained no user message."""
+        super().__init__(f"Chat {chat_id} has no user message to regenerate")
         self.chat_id = chat_id
 
 
@@ -86,6 +96,63 @@ class ChatService:
             assistant_id = await self._persist_assistant(chat_id, acc, completed=completed)
         if assistant_id is not None:
             yield Done(message_id=assistant_id, usage=acc.usage)
+
+    async def regenerate_turn(
+        self, user_id: UUID, chat_id: UUID
+    ) -> tuple[str, str, list[ModelMessage]]:
+        """Prepare a regeneration: delete trailing assistant messages, return stream params.
+
+        Validates ownership and model availability before any mutation.  All
+        messages with a sequence number higher than the last user message are
+        removed so that ``stream_turn`` can write a fresh assistant reply
+        without leaving duplicate rows.
+
+        Returns:
+            A 3-tuple of ``(model_name, last_user_content, history)`` suitable
+            for passing directly to ``stream_turn``.
+
+        Raises:
+            ChatNotFoundError: If the chat does not exist or is not owned by *user_id*.
+            NoUserMessageError: If the chat contains no user messages to regenerate from.
+            ModelUnavailableError: If the chat's model is unset or not installed.
+            ModelProviderError: If the model provider cannot be reached.
+        """
+        async with self._sessionmaker() as session:
+            chats = ChatRepo(session)
+            chat = await chats.get(chat_id)
+            if chat is None or chat.user_id != user_id:
+                raise ChatNotFoundError(chat_id)
+            await self._agent.ensure_available(chat.model)
+            model = chat.model
+            assert model is not None  # ensure_available rejects None
+
+            messages = MessageRepo(session)
+            all_messages = await messages.list(FieldEquals(Message.chat_id, chat_id))
+
+            # Find the last user message (highest seq among role=="user")
+            last_user: Message | None = None
+            for msg in reversed(all_messages):
+                if msg.role == "user":
+                    last_user = msg
+                    break
+
+            if last_user is None:
+                raise NoUserMessageError(chat_id)
+
+            # Delete every message that trails the last user message (complete or incomplete)
+            for msg in all_messages:
+                if msg.seq > last_user.seq:
+                    await messages.delete(msg)
+
+            # History is all complete messages strictly before the last user message
+            history_rows = [
+                m for m in all_messages if m.seq < last_user.seq and not m.incomplete
+            ]
+            last_user_content = last_user.content
+
+            await session.commit()
+
+        return model, last_user_content, self._agent.to_model_messages(history_rows)
 
     async def _persist_assistant(
         self, chat_id: UUID, acc: ReplyAccumulator, *, completed: bool

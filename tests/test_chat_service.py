@@ -8,7 +8,7 @@ from capybara.db.engine import create_sessionmaker
 from capybara.db.models import Chat, Message
 from capybara.filters import FieldEquals
 from capybara.repositories.message_repo import MessageRepo
-from capybara.services.chat_service import ChatNotFoundError, ChatService
+from capybara.services.chat_service import ChatNotFoundError, ChatService, NoUserMessageError
 from capybara.services.events import Delta, Done
 from support import FakeAgent, PartialThenFailAgent, RaisingAgent
 
@@ -198,3 +198,155 @@ async def test_begin_turn_rejects_foreign_chat(
     async with maker() as check:
         stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
     assert stored == []
+
+
+# ---------------------------------------------------------------------------
+# regenerate_turn tests
+# ---------------------------------------------------------------------------
+
+
+async def test_regenerate_turn_deletes_trailing_assistant_and_regenerates(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """regenerate_turn removes the old assistant reply and streams a fresh one.
+
+    After the full regenerate + stream cycle the chat must contain exactly one
+    user message (unchanged) and one assistant message (the new reply).  No
+    duplicate user row is ever written.
+    """
+    user_id, chat_id = await _seed_chat(engine, make_user, "regen_user")
+    maker = create_sessionmaker(engine)
+
+    async with maker() as setup:
+        repo = MessageRepo(setup)
+        await repo.create(chat_id=chat_id, role="user", content="Вопрос")
+        await repo.create(
+            chat_id=chat_id, role="assistant", content="Старый ответ", incomplete=False
+        )
+        await setup.commit()
+
+    service = ChatService(maker, FakeAgent(settings, "Новый ответ"))
+
+    model, content, history = await service.regenerate_turn(user_id, chat_id)  # type: ignore[arg-type]
+    assert content == "Вопрос"
+
+    events = [e async for e in service.stream_turn(chat_id, model, content, history)]
+
+    deltas = [e for e in events if isinstance(e, Delta)]
+    done = [e for e in events if isinstance(e, Done)]
+    assert "".join(d.text for d in deltas) == "Новый ответ"
+    assert len(done) == 1
+
+    async with maker() as check:
+        stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
+
+    user_msgs = [m for m in stored if m.role == "user"]
+    assistant_msgs = [m for m in stored if m.role == "assistant"]
+    assert len(user_msgs) == 1
+    assert len(assistant_msgs) == 1
+    assert user_msgs[0].content == "Вопрос"
+    assert assistant_msgs[0].content == "Новый ответ"
+
+
+async def test_regenerate_turn_no_trailing_assistant_still_streams(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """regenerate_turn works even when the last user message has no assistant after it.
+
+    Nothing is deleted; stream_turn simply produces a new assistant message.
+    """
+    user_id, chat_id = await _seed_chat(engine, make_user, "regen_noasst")
+    maker = create_sessionmaker(engine)
+
+    async with maker() as setup:
+        repo = MessageRepo(setup)
+        await repo.create(chat_id=chat_id, role="user", content="Привет")
+        await setup.commit()
+
+    service = ChatService(maker, FakeAgent(settings, "Ответ"))
+
+    model, content, history = await service.regenerate_turn(user_id, chat_id)  # type: ignore[arg-type]
+    assert content == "Привет"
+
+    events = [e async for e in service.stream_turn(chat_id, model, content, history)]
+
+    done = [e for e in events if isinstance(e, Done)]
+    assert len(done) == 1
+
+    async with maker() as check:
+        stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
+
+    assert [m.role for m in stored] == ["user", "assistant"]
+    assert len([m for m in stored if m.role == "user"]) == 1
+
+
+async def test_regenerate_turn_raises_when_no_user_message(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """regenerate_turn raises NoUserMessageError when the chat has no user messages."""
+    user_id, chat_id = await _seed_chat(engine, make_user, "regen_empty")
+    maker = create_sessionmaker(engine)
+
+    service = ChatService(maker, FakeAgent(settings, "x"))
+
+    with pytest.raises(NoUserMessageError):
+        await service.regenerate_turn(user_id, chat_id)  # type: ignore[arg-type]
+
+
+async def test_regenerate_turn_rejects_missing_chat(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """regenerate_turn raises ChatNotFoundError for a non-existent chat."""
+    user_id, _ = await _seed_chat(engine, make_user, "regen_ghost")
+    maker = create_sessionmaker(engine)
+
+    service = ChatService(maker, FakeAgent(settings, "x"))
+
+    with pytest.raises(ChatNotFoundError):
+        await service.regenerate_turn(user_id, uuid4())  # type: ignore[arg-type]
+
+
+async def test_regenerate_turn_rejects_foreign_chat(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """regenerate_turn raises ChatNotFoundError when the chat belongs to another user."""
+    _, chat_id = await _seed_chat(engine, make_user, "regen_owner")
+    other_id, _ = await _seed_chat(engine, make_user, "regen_intruder")
+    maker = create_sessionmaker(engine)
+
+    service = ChatService(maker, FakeAgent(settings, "x"))
+
+    with pytest.raises(ChatNotFoundError):
+        await service.regenerate_turn(other_id, chat_id)  # type: ignore[arg-type]
+
+
+async def test_regenerate_turn_rejects_unavailable_model(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """regenerate_turn raises ModelUnavailableError when the chat's model is not installed."""
+    from capybara.agent import ModelUnavailableError
+
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup, username="regen_badmodel", display_name="B")
+        chat = Chat(user_id=user.id, title="c", model="ghost:1b")
+        setup.add(chat)
+        await setup.commit()
+        user_id, chat_id = user.id, chat.id
+
+    service = ChatService(maker, FakeAgent(settings, "x"))
+
+    with pytest.raises(ModelUnavailableError):
+        await service.regenerate_turn(user_id, chat_id)  # type: ignore[arg-type]

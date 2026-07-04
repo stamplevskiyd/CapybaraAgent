@@ -242,3 +242,137 @@ async def test_send_without_model_returns_409(client: AsyncClient) -> None:
     resp = await client.post(f"/chats/{chat_id}/messages", json={"content": "Привет"})
     assert resp.status_code == 409
     assert "available" in resp.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
+# POST /chats/{chat_id}/messages/regenerate tests
+# ---------------------------------------------------------------------------
+
+
+async def test_regenerate_streams_sse_and_no_duplicate_user_message(
+    client: AsyncClient,
+) -> None:
+    """Regenerate removes the old assistant reply and streams a new one.
+
+    The number of user messages must remain exactly 1 — regenerate must never
+    write a second user row.
+    """
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+
+    # First send creates one user + one assistant
+    async with client.stream(
+        "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
+    ) as resp:
+        assert resp.status_code == 200
+        async for _ in resp.aiter_text():
+            pass
+
+    # Regenerate the assistant reply
+    async with client.stream("POST", f"/chats/{chat_id}/messages/regenerate") as resp:
+        assert resp.status_code == 200
+        body = ""
+        async for chunk in resp.aiter_text():
+            body += chunk
+
+    assert "event: delta" in body
+    assert "event: done" in body
+
+    fetched = await client.get(f"/chats/{chat_id}")
+    messages = fetched.json()["messages"]
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+    assert len(user_msgs) == 1, "regenerate must not create a duplicate user message"
+    assert len(assistant_msgs) == 1
+
+
+async def test_regenerate_sse_headers_match_send_message(
+    client: AsyncClient,
+) -> None:
+    """Regenerate endpoint must include the same SSE no-buffer headers as send_message."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    await client.post(f"/chats/{chat_id}/messages", json={"content": "Привет"})
+
+    async with client.stream("POST", f"/chats/{chat_id}/messages/regenerate") as resp:
+        assert resp.status_code == 200
+        async for _ in resp.aiter_text():
+            pass
+
+    assert resp.headers.get("cache-control") == "no-cache"
+    assert resp.headers.get("x-accel-buffering") == "no"
+    assert resp.headers.get("connection") == "keep-alive"
+
+
+async def test_regenerate_no_trailing_assistant_still_streams(
+    client: AsyncClient,
+    engine: AsyncEngine,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """Regenerate works even when the last user message has no assistant reply yet."""
+    from capybara.db.models import Message
+
+    maker = create_sessionmaker(engine)
+
+    # Create a chat via API to get a valid chat_id owned by the client user
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+
+    # Insert a user message directly without an assistant message
+    import uuid
+
+    async with maker() as setup:
+        setup.add(Message(chat_id=uuid.UUID(chat_id), role="user", content="Bare question"))
+        await setup.commit()
+
+    async with client.stream("POST", f"/chats/{chat_id}/messages/regenerate") as resp:
+        assert resp.status_code == 200
+        body = ""
+        async for chunk in resp.aiter_text():
+            body += chunk
+
+    assert "event: delta" in body
+    assert "event: done" in body
+
+    fetched = await client.get(f"/chats/{chat_id}")
+    messages = fetched.json()["messages"]
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    assert len(user_msgs) == 1
+
+
+async def test_regenerate_no_user_message_returns_409(client: AsyncClient) -> None:
+    """Regenerate on a chat with no user messages returns 409 Conflict."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.post(f"/chats/{chat_id}/messages/regenerate")
+    assert resp.status_code == 409
+    assert "regenerate" in resp.json()["detail"].lower()
+
+
+async def test_regenerate_missing_chat_returns_404(client: AsyncClient) -> None:
+    """Regenerate on a non-existent chat returns 404."""
+    resp = await client.post("/chats/00000000-0000-0000-0000-000000000099/messages/regenerate")
+    assert resp.status_code == 404
+
+
+async def test_regenerate_other_users_chat_returns_404(
+    client: AsyncClient,
+    engine: AsyncEngine,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """Regenerate on another user's chat returns 404."""
+    from capybara.db.models import Chat as ChatModel
+
+    maker = create_sessionmaker(engine)
+    async with maker() as sess:
+        other_user = await make_user(sess, username="regen_other", display_name="Other")
+        other_chat = ChatModel(user_id=other_user.id, title="private", model="test-model")
+        sess.add(other_chat)
+        await sess.commit()
+        other_chat_id = other_chat.id
+
+    resp = await client.post(f"/chats/{other_chat_id}/messages/regenerate")
+    assert resp.status_code == 404
+
+
+async def test_regenerate_without_model_returns_409(client: AsyncClient) -> None:
+    """Regenerate on a chat with no model set returns 409 before any SSE bytes."""
+    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]  # no model
+    resp = await client.post(f"/chats/{chat_id}/messages/regenerate")
+    assert resp.status_code == 409
