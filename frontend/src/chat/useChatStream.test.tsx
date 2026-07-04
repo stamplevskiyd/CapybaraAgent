@@ -87,6 +87,35 @@ test('invokes onTitle when a title event arrives', async () => {
   expect(onTitle).toHaveBeenCalledWith('Про капибар')
 })
 
+test('sending clears on done even when a title frame trails it', async () => {
+  let ctrl!: ReadableStreamDefaultController
+  const stream = new ReadableStream({
+    start(controller) {
+      ctrl = controller
+      controller.enqueue(new TextEncoder().encode('event: delta\ndata: {"text":"Хай"}\n\n'))
+      controller.enqueue(new TextEncoder().encode('event: done\ndata: {"message_id":"m1"}\n\n'))
+    },
+  })
+  server.use(
+    http.post('/api/chats/c1/messages', () =>
+      new HttpResponse(stream, { headers: { 'Content-Type': 'text/event-stream' } }),
+    ),
+  )
+  const onTitle = vi.fn()
+  const { result } = renderHook(() => useChatStream('c1', onTitle), { wrapper })
+  act(() => {
+    void result.current.send('Привет')
+  })
+  // After delta+done are consumed, the composer is freed even though the stream is still open.
+  await waitFor(() => expect(result.current.sending).toBe(false))
+  // Now the trailing title arrives and the stream closes.
+  await act(async () => {
+    ctrl.enqueue(new TextEncoder().encode('event: title\ndata: {"title":"Про капибар"}\n\n'))
+    ctrl.close()
+  })
+  await waitFor(() => expect(onTitle).toHaveBeenCalledWith('Про капибар'))
+})
+
 test('regenerate calls /messages/regenerate and replaces the last assistant without duplicating the user bubble', async () => {
   let regenerateCalled = false
 

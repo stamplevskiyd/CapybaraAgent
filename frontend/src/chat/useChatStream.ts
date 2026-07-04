@@ -85,6 +85,7 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
             patch((m) => ({ ...m, content: m.content + delta }))
           } else if (ev.event === 'done') {
             patch((m) => ({ ...m, streaming: false }))
+            setSending(false)
           } else if (ev.event === 'error') {
             const { message } = JSON.parse(ev.data) as { message: string }
             patch((m) => ({ ...m, streaming: false, error: true, content: message }))
@@ -106,8 +107,12 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
           patch((m) => ({ ...m, streaming: false, error: true, content: 'Ошибка при получении ответа.' }))
         }
       } finally {
-        setSending(false)
-        abortRef.current = null
+        // Only settle shared state if we're still the active stream — a newer send
+        // may have taken over while this one drained its trailing title frame.
+        if (abortRef.current === controller) {
+          setSending(false)
+          abortRef.current = null
+        }
       }
     },
     [api],
