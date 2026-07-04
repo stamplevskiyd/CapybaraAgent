@@ -1,7 +1,12 @@
 """Router for the /health endpoint."""
 
+from typing import Annotated
+
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends
+
+from capybara.api.dependencies import get_settings_dep
+from capybara.config import Settings
 
 router = APIRouter()
 
@@ -17,8 +22,7 @@ async def ollama_is_up(base_url: str) -> bool:
 
 
 @router.get("/health")
-async def health(request: Request) -> dict[str, str]:
+async def health(settings: Annotated[Settings, Depends(get_settings_dep)]) -> dict[str, str]:
     """Return API status and Ollama availability."""
-    base_url: str = request.app.state.settings.ollama_base_url
-    up = await ollama_is_up(base_url)
+    up = await ollama_is_up(settings.ollama_base_url)
     return {"status": "ok", "ollama": "up" if up else "down"}

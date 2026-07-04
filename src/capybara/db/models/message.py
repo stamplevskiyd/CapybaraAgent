@@ -26,7 +26,8 @@ class Message(Base, TimestampMixin):
     """ORM model representing a single message within a chat."""
 
     __tablename__ = "messages"
-    __table_args__ = (CheckConstraint(f"role IN ({_ROLE_CHECK})", name="ck_messages_role"),)
+    # Short label only — the naming convention prefixes it to ``ck_messages_role``.
+    __table_args__ = (CheckConstraint(f"role IN ({_ROLE_CHECK})", name="role"),)
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     chat_id: Mapped[UUID] = mapped_column(ForeignKey("chats.id"), index=True)

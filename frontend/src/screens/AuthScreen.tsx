@@ -36,8 +36,7 @@ export function AuthScreen() {
   return (
     <div className={styles.screen}>
       <div className={styles.header}>
-        <CapyLogo size={60} />
-        <div className={styles.wordmark}>CapybaraAgent</div>
+        <CapyLogo size={120} />
         <div className={styles.tagline}>Локальный AI-агент</div>
       </div>
       <form className={styles.card} onSubmit={onSubmit}>

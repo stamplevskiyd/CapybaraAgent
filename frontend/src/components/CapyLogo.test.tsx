@@ -1,10 +1,10 @@
 import { render } from '@testing-library/react'
 import { CapyLogo } from './CapyLogo'
 
-test('renders an svg at the requested size', () => {
+test('renders the logo image at the requested size', () => {
   const { container } = render(<CapyLogo size={40} />)
-  const svg = container.querySelector('svg')
-  expect(svg).toBeInTheDocument()
-  expect(svg).toHaveAttribute('width', '40')
-  expect(svg).toHaveAttribute('viewBox', '0 0 32 32')
+  const img = container.querySelector('img')
+  expect(img).toBeInTheDocument()
+  expect(img).toHaveAttribute('width', '40')
+  expect(img).toHaveAttribute('height', '40')
 })

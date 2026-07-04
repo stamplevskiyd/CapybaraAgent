@@ -60,9 +60,8 @@ export function Sidebar({
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logoBlock}>
-        <CapyLogo size={40} />
+        <CapyLogo size={48} />
         <div className={styles.logoText}>
-          <span className={styles.logoName}>CapybaraAgent</span>
           <span className={styles.logoSub}>локальный агент</span>
         </div>
       </div>

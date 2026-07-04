@@ -17,15 +17,21 @@ from capybara.security.passwords import hash_password
 
 
 @pytest.fixture(scope="session")
-def pg_url() -> Iterator[str]:
+def postgres_container() -> Iterator[PostgresContainer]:
     with PostgresContainer("postgres:16", driver="asyncpg") as pg:
-        yield pg.get_connection_url()
+        yield pg
 
 
 @pytest.fixture(scope="session")
-def settings(pg_url: str) -> Settings:
-    return Settings(  # type: ignore[call-arg]
-        database_url=pg_url,
+def settings(postgres_container: PostgresContainer) -> Settings:
+    # Build Settings from the container's parts (not a URL string): explicit kwargs
+    # override any dotenv values, so database_url is derived deterministically.
+    return Settings(
+        postgres_user=postgres_container.username,
+        postgres_password=postgres_container.password,
+        postgres_host=postgres_container.get_container_host_ip(),
+        postgres_port=int(postgres_container.get_exposed_port(5432)),
+        postgres_db=postgres_container.dbname,
         ollama_base_url="http://ollama.test:11434",
         default_model="test-model",
         jwt_secret="test-jwt-secret-key-with-at-least-32-bytes!!",

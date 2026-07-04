@@ -36,3 +36,10 @@ def test_non_uuid_sub_rejected() -> None:
     token = pyjwt.encode({"sub": "not-a-uuid"}, SECRET, algorithm="HS256")
     with pytest.raises(pyjwt.InvalidTokenError):
         decode_access_token(token, secret=SECRET)
+
+
+def test_token_without_exp_rejected() -> None:
+    """A token that carries no expiry is refused — expiry is mandatory, not optional."""
+    token = pyjwt.encode({"sub": str(uuid4())}, SECRET, algorithm="HS256")
+    with pytest.raises(pyjwt.MissingRequiredClaimError):
+        decode_access_token(token, secret=SECRET)

@@ -106,6 +106,41 @@ async def test_stream_turn_does_not_persist_empty_assistant_on_immediate_error(
     assert [m.role for m in stored] == ["user"]
 
 
+async def test_begin_turn_excludes_incomplete_from_history(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """Incomplete assistant replies stay in the DB but are never replayed to the model.
+
+    A half-streamed answer that failed mid-reply must not re-enter the model context as
+    if it were a complete turn; it remains stored only for the UI to render.
+    """
+    from pydantic_ai.messages import ModelResponse, TextPart
+
+    user_id, chat_id = await _seed_chat(engine, make_user, "hist_user")
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        repo = MessageRepo(setup)
+        await repo.create(chat_id=chat_id, role="user", content="q1")
+        await repo.create(chat_id=chat_id, role="assistant", content="a1", incomplete=False)
+        await repo.create(chat_id=chat_id, role="assistant", content="partial", incomplete=True)
+        await setup.commit()
+
+    service = ChatService(maker, FakeAgent(settings, "x"))
+    history = await service.begin_turn(user_id, chat_id, "q2")  # type: ignore[arg-type]
+
+    reply_texts = [
+        part.content
+        for message in history
+        if isinstance(message, ModelResponse)
+        for part in message.parts
+        if isinstance(part, TextPart)
+    ]
+    assert "a1" in reply_texts
+    assert "partial" not in reply_texts
+
+
 async def test_begin_turn_rejects_missing_chat(
     engine: AsyncEngine,
     settings: Settings,

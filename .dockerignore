@@ -3,4 +3,4 @@ __pycache__
 .pytest_cache
 .git
 *.pyc
-.env
+.env*

@@ -19,11 +19,6 @@ class Done:
     usage: dict[str, Any] | None
 
 
-@dataclass
-class Error:
-    """Event indicating an error occurred during streaming."""
-
-    message: str
-
-
-StreamEvent = Delta | Done | Error
+# Stream failures are surfaced by the router as an ``event: error`` SSE frame from its
+# exception handler, not as a StreamEvent — the service raises rather than yielding.
+StreamEvent = Delta | Done

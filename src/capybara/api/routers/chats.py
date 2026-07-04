@@ -28,7 +28,7 @@ from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatNotFoundError, ChatService
-from capybara.services.events import Delta, Done, Error
+from capybara.services.events import Delta, Done
 
 logger = logging.getLogger(__name__)
 
@@ -106,8 +106,6 @@ async def send_message(
                         "done",
                         {"message_id": event.message_id, "usage": event.usage},
                     )
-                elif isinstance(event, Error):
-                    yield _sse("error", {"message": event.message})
         except Exception:  # surface a generic SSE error, never a broken stream
             logger.exception("chat stream failed for chat %s", chat_id)
             yield _sse("error", {"message": "Internal server error while streaming the reply"})

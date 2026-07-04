@@ -39,7 +39,7 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.PrimaryKeyConstraint("id"),
+        sa.PrimaryKeyConstraint("id", name="pk_users"),
     )
     op.create_index(op.f("ix_users_username"), "users", ["username"], unique=True)
     op.create_table(
@@ -59,8 +59,8 @@ def upgrade() -> None:
             server_default=sa.text("now()"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"]),
-        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="fk_chats_user_id_users"),
+        sa.PrimaryKeyConstraint("id", name="pk_chats"),
     )
     op.create_index(op.f("ix_chats_user_id"), "chats", ["user_id"], unique=False)
     op.create_table(
@@ -86,8 +86,8 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint("role IN ('user', 'assistant')", name="ck_messages_role"),
-        sa.ForeignKeyConstraint(["chat_id"], ["chats.id"]),
-        sa.PrimaryKeyConstraint("id"),
+        sa.ForeignKeyConstraint(["chat_id"], ["chats.id"], name="fk_messages_chat_id_chats"),
+        sa.PrimaryKeyConstraint("id", name="pk_messages"),
         sa.UniqueConstraint("seq", name="uq_messages_seq"),
     )
     op.create_index(op.f("ix_messages_chat_id"), "messages", ["chat_id"], unique=False)

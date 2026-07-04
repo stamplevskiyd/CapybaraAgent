@@ -21,7 +21,7 @@ def create_access_token(
 
 def decode_access_token(token: str, *, secret: str, algorithm: str = "HS256") -> UUID:
     """Decode a JWT access token and return its subject user id; raise on invalid/expired."""
-    payload = jwt.decode(token, secret, algorithms=[algorithm])
+    payload = jwt.decode(token, secret, algorithms=[algorithm], options={"require": ["exp"]})
     try:
         return UUID(payload["sub"])
     except (KeyError, ValueError) as err:

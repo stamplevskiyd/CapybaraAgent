@@ -1,11 +1,10 @@
 """Repository for Chat model access."""
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import ColumnElement
+from sqlalchemy import ColumnElement, func
 
 from capybara.db.models import Chat
 from capybara.repositories.base import BaseRepository
@@ -28,6 +27,11 @@ class ChatRepo(BaseRepository[Chat]):
         return await super().create(**fields)
 
     async def touch(self, chat: Chat) -> None:
-        """Update updated_at to now to mark a chat as recently active."""
-        chat.updated_at = datetime.now(UTC)
+        """Mark a chat as recently active by bumping updated_at to the DB clock.
+
+        Uses ``func.now()`` (server-side) rather than the app clock so ordering by
+        updated_at stays consistent with server_default/onupdate timestamps and is
+        immune to app/DB clock skew.
+        """
+        chat.updated_at = func.now()
         await self._session.flush()

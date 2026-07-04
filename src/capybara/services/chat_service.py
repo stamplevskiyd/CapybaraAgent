@@ -49,7 +49,12 @@ class ChatService:
             if chat is None or chat.user_id != user_id:
                 raise ChatNotFoundError(chat_id)
             messages = MessageRepo(session)
-            history_rows = await messages.list(FieldEquals(Message.chat_id, chat_id))
+            # Incomplete assistant replies (half-streamed turns that failed) are kept for
+            # the UI but excluded here, so a partial answer never re-enters model context.
+            history_rows = await messages.list(
+                FieldEquals(Message.chat_id, chat_id),
+                FieldEquals(Message.incomplete, False),
+            )
             await messages.create(chat_id=chat_id, role="user", content=user_content)
             await session.commit()
         return self._agent.to_model_messages(history_rows)

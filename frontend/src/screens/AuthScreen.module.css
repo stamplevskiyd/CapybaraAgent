@@ -11,21 +11,13 @@
   padding: 24px;
 }
 
-/* Header: logo + wordmark + tagline */
+/* Header: logo + tagline */
 .header {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   text-align: center;
-}
-
-.wordmark {
-  font-family: 'Space Grotesk', sans-serif;
-  font-weight: 600;
-  font-size: 22px;
-  color: var(--text-primary);
-  letter-spacing: -0.3px;
 }
 
 .tagline {
