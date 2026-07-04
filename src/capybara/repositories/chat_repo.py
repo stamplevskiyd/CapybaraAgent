@@ -19,11 +19,15 @@ class ChatRepo(BaseRepository[Chat]):
         """Order chats by most recently updated first."""
         return (Chat.updated_at.desc(),)
 
-    async def create(self, user_id: UUID, title: str | None = None) -> Chat:  # type: ignore[override]
-        """Create a chat for user_id, optionally setting a custom title."""
+    async def create(  # type: ignore[override]
+        self, user_id: UUID, title: str | None = None, model: str | None = None
+    ) -> Chat:
+        """Create a chat for user_id, optionally setting a custom title and model."""
         fields: dict[str, Any] = {"user_id": user_id}
         if title is not None:
             fields["title"] = title
+        if model is not None:
+            fields["model"] = model
         return await super().create(**fields)
 
     async def touch(self, chat: Chat) -> None:

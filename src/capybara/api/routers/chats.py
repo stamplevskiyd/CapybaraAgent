@@ -42,7 +42,7 @@ async def create_chat(
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
 ) -> ChatOut:
     """Create a new chat for the current user."""
-    chat = await chats.create(user.id, payload.title)
+    chat = await chats.create(user.id, payload.title, payload.model)
     return ChatOut.model_validate(chat)
 
 
@@ -66,6 +66,7 @@ async def get_chat(
     return ChatDetailOut(
         id=chat.id,
         title=chat.title,
+        model=chat.model,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
         messages=[MessageOut.model_validate(m) for m in rows],

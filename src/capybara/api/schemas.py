@@ -29,6 +29,20 @@ class ChatCreate(BaseModel):
     """Payload for creating a new chat."""
 
     title: str | None = Field(default=None, max_length=200)
+    model: str | None = Field(default=None, max_length=128)
+
+
+class ChatUpdate(BaseModel):
+    """Payload for changing a chat's selected model."""
+
+    model: str = Field(min_length=1, max_length=128)
+
+
+class ModelsOut(BaseModel):
+    """Available models for a provider."""
+
+    provider: str
+    models: list[str]
 
 
 class MessageCreate(BaseModel):
@@ -57,6 +71,7 @@ class ChatOut(BaseModel):
 
     id: UUID
     title: str
+    model: str | None
     created_at: datetime
     updated_at: datetime
 

@@ -133,6 +133,25 @@ async def test_user_repo_list_orders_by_created_at_asc(session: AsyncSession) ->
     assert idx_older < idx_newer, "older created_at user must appear before newer"
 
 
+async def test_chat_repo_create_persists_model(session) -> None:  # type: ignore[no-untyped-def]
+    """A chat created with a model round-trips the model value."""
+    from capybara.db.models import User
+    from capybara.repositories.chat_repo import ChatRepo
+    from capybara.security.passwords import hash_password
+
+    user = User(username="modeluser", display_name="M", password_hash=hash_password("password123"))
+    session.add(user)
+    await session.flush()
+
+    repo = ChatRepo(session)
+    chat = await repo.create(user.id, title="c", model="llama3.1:8b")
+    assert chat.model == "llama3.1:8b"
+
+    reloaded = await repo.get(chat.id)
+    assert reloaded is not None
+    assert reloaded.model == "llama3.1:8b"
+
+
 async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
     """list(FieldEquals(...)) returns only rows matching the filter value."""
     user = await _seed_user(session)
