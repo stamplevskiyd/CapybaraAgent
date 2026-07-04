@@ -3,23 +3,28 @@
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from capybara.agent.base import BaseAgent, ModelProviderError, ModelUnavailableError
 from capybara.api.dependencies import (
+    get_agent,
     get_chat_repo,
     get_chat_service,
     get_current_user,
     get_message_repo,
     get_owned_chat,
+    get_session,
 )
 from capybara.api.schemas import (
     ChatCreate,
     ChatDetailOut,
     ChatOut,
+    ChatUpdate,
     MessageCreate,
     MessageOut,
 )
@@ -40,8 +45,14 @@ async def create_chat(
     payload: ChatCreate,
     user: Annotated[User, Depends(get_current_user)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
+    agent: Annotated[BaseAgent, Depends(get_agent)],
 ) -> ChatOut:
-    """Create a new chat for the current user."""
+    """Create a new chat for the current user, optionally with a validated model."""
+    if payload.model is not None:
+        try:
+            await agent.ensure_available(payload.model)
+        except (ModelUnavailableError, ModelProviderError) as exc:
+            _raise_for_model_error(exc)
     chat = await chats.create(user.id, payload.title, payload.model)
     return ChatOut.model_validate(chat)
 
@@ -73,8 +84,33 @@ async def get_chat(
     )
 
 
+@router.patch("/{chat_id}", response_model=ChatOut)
+async def update_chat_model(
+    payload: ChatUpdate,
+    chat: Annotated[Chat, Depends(get_owned_chat)],
+    chats: Annotated[ChatRepo, Depends(get_chat_repo)],
+    agent: Annotated[BaseAgent, Depends(get_agent)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> ChatOut:
+    """Set the chat's model after validating it is installed; 404 if not owned."""
+    try:
+        await agent.ensure_available(payload.model)
+    except (ModelUnavailableError, ModelProviderError) as exc:
+        _raise_for_model_error(exc)
+    updated = await chats.update(chat, model=payload.model)
+    await session.refresh(updated)
+    return ChatOut.model_validate(updated)
+
+
 def _sse(event: str, data: dict[str, object]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _raise_for_model_error(exc: ModelUnavailableError | ModelProviderError) -> NoReturn:
+    """Translate a model error into the matching HTTP error."""
+    if isinstance(exc, ModelProviderError):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/{chat_id}/messages")
@@ -91,15 +127,17 @@ async def send_message(
     not take a request-scoped session — ChatService owns its own session lifecycle.
     """
     try:
-        history = await service.begin_turn(user.id, chat_id, payload.content)
+        model, history = await service.begin_turn(user.id, chat_id, payload.content)
     except ChatNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
         ) from None
+    except (ModelUnavailableError, ModelProviderError) as exc:
+        _raise_for_model_error(exc)
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(chat_id, payload.content, history):  # type: ignore[call-arg,arg-type]
+            async for event in service.stream_turn(chat_id, model, payload.content, history):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):

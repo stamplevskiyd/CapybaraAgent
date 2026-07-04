@@ -12,7 +12,7 @@ from capybara.config import Settings
 from capybara.db.engine import create_sessionmaker
 from capybara.db.models import Chat, User
 from capybara.main import app
-from support import FakeAgent, RaisingAgent
+from support import FakeAgent, PartialThenFailAgent, RaisingAgent  # noqa: F401
 
 
 @pytest_asyncio.fixture
@@ -77,7 +77,7 @@ async def test_post_message_missing_chat_404(client: AsyncClient) -> None:
 
 
 async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> None:
-    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
 
     async with client.stream(
         "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
@@ -103,7 +103,7 @@ async def test_create_chat_title_too_long_returns_422(client: AsyncClient) -> No
 
 async def test_send_empty_message_returns_422(client: AsyncClient) -> None:
     """Empty message content is rejected by request validation."""
-    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
     resp = await client.post(f"/chats/{chat_id}/messages", json={"content": ""})
     assert resp.status_code == 422
 
@@ -112,7 +112,7 @@ async def test_send_message_stream_error_is_generic(
     client: AsyncClient, settings: Settings
 ) -> None:
     """A failure mid-stream surfaces a generic SSE error, never the exception detail."""
-    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
     secret = "SECRET-LEAK-should-not-appear-42"
     app.dependency_overrides[get_agent] = lambda: RaisingAgent(settings, secret)
 
@@ -163,3 +163,50 @@ async def test_send_message_to_other_users_chat_returns_404(
 
     resp = await client.post(f"/chats/{other_chat_id}/messages", json={"content": "hello"})
     assert resp.status_code == 404
+
+
+async def test_list_models_returns_provider_list(client: AsyncClient) -> None:
+    resp = await client.get("/models")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["provider"] == "ollama"
+    assert body["models"] == ["test-model"]
+
+
+async def test_list_models_502_when_provider_unreachable(
+    client: AsyncClient, settings: Settings
+) -> None:
+    from capybara.agent import ModelProviderError
+
+    class DownAgent(FakeAgent):
+        async def list_models(self) -> list[str]:
+            raise ModelProviderError(settings.ollama_base_url)
+
+    app.dependency_overrides[get_agent] = lambda: DownAgent(settings, "x")
+    resp = await client.get("/models")
+    assert resp.status_code == 502
+    assert "unreachable" in resp.json()["detail"].lower()
+
+
+async def test_patch_chat_model_sets_and_validates(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]
+
+    ok = await client.patch(f"/chats/{chat_id}", json={"model": "test-model"})
+    assert ok.status_code == 200
+    assert ok.json()["model"] == "test-model"
+
+    bad = await client.patch(f"/chats/{chat_id}", json={"model": "ghost:1b"})
+    assert bad.status_code == 409
+
+
+async def test_create_chat_with_unknown_model_409(client: AsyncClient) -> None:
+    resp = await client.post("/chats", json={"title": "c", "model": "ghost:1b"})
+    assert resp.status_code == 409
+
+
+async def test_send_without_model_returns_409(client: AsyncClient) -> None:
+    """A chat with no model selected is rejected up front, not via an SSE error."""
+    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]  # no model
+    resp = await client.post(f"/chats/{chat_id}/messages", json={"content": "Привет"})
+    assert resp.status_code == 409
+    assert "available" in resp.json()["detail"].lower()
