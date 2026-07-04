@@ -145,4 +145,17 @@ async def send_message(
             logger.exception("chat stream failed for chat %s", chat_id)
             yield _sse("error", {"message": "Internal server error while streaming the reply"})
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            # Prevent the Vite dev proxy and browser fetch from buffering the
+            # response — chunks must arrive incrementally so assistant tokens
+            # appear in real time rather than all at once (or not at all).
+            "Cache-Control": "no-cache",
+            # Disable nginx upstream buffering in production.
+            "X-Accel-Buffering": "no",
+            # Keep the TCP connection open for the duration of the stream.
+            "Connection": "keep-alive",
+        },
+    )

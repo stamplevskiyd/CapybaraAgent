@@ -95,6 +95,38 @@ async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> Non
     assert roles == ["user", "assistant"]
 
 
+async def test_chat_stream_has_sse_no_buffer_headers(client: AsyncClient) -> None:
+    """SSE streaming endpoint must include flush-friendly headers.
+
+    Without Cache-Control: no-cache the Vite dev proxy and browser fetch do not
+    know the response is a live stream; chunks may be buffered until the
+    connection closes, causing assistant messages to never appear in the UI.
+    Without X-Accel-Buffering: no nginx would buffer the upstream response in
+    production before forwarding it to the client.
+    """
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+
+    async with client.stream(
+        "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
+    ) as resp:
+        assert resp.status_code == 200
+        # Drain the stream so the connection closes cleanly.
+        async for _ in resp.aiter_text():
+            pass
+
+    assert resp.headers.get("cache-control") == "no-cache", (
+        "Cache-Control: no-cache is required so browsers and the Vite dev proxy "
+        "deliver SSE chunks immediately rather than buffering them"
+    )
+    assert resp.headers.get("x-accel-buffering") == "no", (
+        "X-Accel-Buffering: no is required so nginx does not buffer the upstream "
+        "streaming response in production"
+    )
+    assert resp.headers.get("connection") == "keep-alive", (
+        "Connection: keep-alive is required to keep the SSE connection open"
+    )
+
+
 async def test_create_chat_title_too_long_returns_422(client: AsyncClient) -> None:
     """A title beyond the column bound is rejected before reaching the DB."""
     resp = await client.post("/chats", json={"title": "x" * 201})
