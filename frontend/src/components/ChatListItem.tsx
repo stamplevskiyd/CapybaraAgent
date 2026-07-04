@@ -1,5 +1,5 @@
 /** Presentational list item for a single chat: star toggle, title/inline-rename, menu button. */
-import { useState, type KeyboardEvent } from 'react'
+import { useState, useEffect, type KeyboardEvent } from 'react'
 import { Star, MoreHorizontal } from 'lucide-react'
 import type { ChatOut } from '../api/types'
 import styles from './Sidebar.module.css'
@@ -25,6 +25,10 @@ export function ChatListItem({
   onRenameCancel: () => void
 }) {
   const [draft, setDraft] = useState(chat.title)
+
+  useEffect(() => {
+    if (renaming) setDraft(chat.title)
+  }, [renaming, chat.title])
 
   if (renaming) {
     const commit = () => {

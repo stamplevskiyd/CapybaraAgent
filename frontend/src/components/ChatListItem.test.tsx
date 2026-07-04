@@ -45,3 +45,19 @@ test('menu button reports its anchor rect', async () => {
   await userEvent.click(screen.getByLabelText('Меню чата'))
   expect(onOpenMenu).toHaveBeenCalled()
 })
+
+test('reopening rename resets the input to the current title', async () => {
+  const props = {
+    chat, active: false, onSelect: noop, onToggleFavorite: noop, onOpenMenu: noop,
+    onRenameCommit: vi.fn(), onRenameCancel: vi.fn(),
+  }
+  const { rerender } = render(<ChatListItem {...props} renaming={true} />)
+  const input = screen.getByRole('textbox')
+  await userEvent.clear(input)
+  await userEvent.type(input, 'мусор')
+  // cancel (leave rename mode) without committing
+  rerender(<ChatListItem {...props} renaming={false} />)
+  // reopen rename on the same mounted instance
+  rerender(<ChatListItem {...props} renaming={true} />)
+  expect(screen.getByRole('textbox')).toHaveValue('Мой чат') // chat.title, not 'мусор'
+})
