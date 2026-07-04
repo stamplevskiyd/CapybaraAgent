@@ -4,9 +4,12 @@ import { CapyLogo } from '../components/CapyLogo'
 import { Composer } from '../components/Composer'
 import { Message } from '../components/Message'
 import { Sidebar } from '../components/Sidebar'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth, useApiClient } from '../auth/AuthContext'
 import { useChats } from '../chat/useChats'
+import { useModels } from '../chat/useModels'
 import { useChatStream } from '../chat/useChatStream'
+import { patchChatModel } from '../chat/chatApi'
+import { loadLastModel, saveLastModel } from '../chat/lastModel'
 import styles from './ChatScreen.module.css'
 
 /** Prompt chips shown on the welcome screen to seed the composer. */
@@ -34,14 +37,17 @@ const CHIPS = [
  */
 export function ChatScreen() {
   const { user } = useAuth()
+  const api = useApiClient()
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [pendingSend, setPendingSend] = useState<string | null>(null)
   const [chipText, setChipText] = useState('')
   const [composerKey, setComposerKey] = useState(0)
+  const [draftModel, setDraftModel] = useState<string | null>(() => loadLastModel())
   /** Set to true before updating `activeChatId` for a brand-new chat to skip history load. */
   const skipNextHistory = useRef(false)
 
   const { chats, reload, newChat } = useChats()
+  const { models } = useModels()
   const { messages, sending, send, loadHistory } = useChatStream(activeChatId)
 
   /**
@@ -71,6 +77,17 @@ export function ChatScreen() {
     })()
   }, [activeChatId, pendingSend, send, reload])
 
+  /** Update the selected model; persists to localStorage and PATCHes the active chat if open. */
+  async function handleSelectModel(model: string) {
+    saveLastModel(model)
+    if (activeChatId) {
+      await patchChatModel(api, activeChatId, model)
+      await reload()
+    } else {
+      setDraftModel(model)
+    }
+  }
+
   /**
    * Send a message.
    * If no chat is active, creates one first; the actual stream is deferred via
@@ -80,7 +97,7 @@ export function ChatScreen() {
   async function handleSend(text: string) {
     let id = activeChatId
     if (!id) {
-      const chat = await newChat()
+      const chat = await newChat(draftModel ?? undefined)
       id = chat.id
       skipNextHistory.current = true
       setActiveChatId(id)
@@ -108,6 +125,7 @@ export function ChatScreen() {
   }
 
   const activeChat = chats.find((c) => c.id === activeChatId)
+  const selectedModel = activeChatId ? (activeChat?.model ?? null) : draftModel
 
   return (
     <div className={styles.screen}>
@@ -131,6 +149,9 @@ export function ChatScreen() {
                 onSend={handleSend}
                 disabled={sending}
                 initialText={chipText}
+                models={models}
+                selectedModel={selectedModel}
+                onSelectModel={handleSelectModel}
               />
               <div className={styles.chips}>
                 {CHIPS.map((c) => (
@@ -160,7 +181,13 @@ export function ChatScreen() {
             </div>
             <div className={styles.composerArea}>
               <div className={styles.composerMaxWidth}>
-                <Composer onSend={handleSend} disabled={sending} />
+                <Composer
+                  onSend={handleSend}
+                  disabled={sending}
+                  models={models}
+                  selectedModel={selectedModel}
+                  onSelectModel={handleSelectModel}
+                />
               </div>
             </div>
           </div>
