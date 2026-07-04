@@ -1,5 +1,5 @@
 const KEY = 'capybara.session'
-export type Session = { token: string; username: string }
+export type Session = { token: string; username: string; displayName?: string }
 
 export function loadSession(): Session | null {
   const raw = localStorage.getItem(KEY)

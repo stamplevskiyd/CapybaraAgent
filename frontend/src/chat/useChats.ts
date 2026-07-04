@@ -21,11 +21,14 @@ export function useChats() {
     void reload()
   }, [reload])
 
-  const newChat = useCallback(async () => {
-    const chat = await createChat(api)
-    setChats((prev) => [chat, ...prev])
-    return chat
-  }, [api])
+  const newChat = useCallback(
+    async (model?: string) => {
+      const chat = await createChat(api, undefined, model)
+      setChats((prev) => [chat, ...prev])
+      return chat
+    },
+    [api],
+  )
 
   return { chats, loading, reload, newChat }
 }

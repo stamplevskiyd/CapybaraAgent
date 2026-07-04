@@ -84,6 +84,24 @@ async def test_protected_route_with_token(client: AsyncClient) -> None:
     assert resp.json() == []
 
 
+async def test_users_me_returns_current_user(client: AsyncClient) -> None:
+    """GET /users/me returns the authenticated user's public profile including display_name."""
+    token = (
+        await client.post("/auth/login", json={"username": "roman", "password": "password123"})
+    ).json()["access_token"]
+    resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["username"] == "roman"
+    assert body["display_name"] == "Роман"
+    assert "password" not in body and "password_hash" not in body
+
+
+async def test_users_me_without_token_401(client: AsyncClient) -> None:
+    """GET /users/me without a token returns 401."""
+    assert (await client.get("/users/me")).status_code == 401
+
+
 async def test_protected_route_without_token_401(client: AsyncClient) -> None:
     """Request without Authorization header returns 401."""
     assert (await client.get("/chats")).status_code == 401

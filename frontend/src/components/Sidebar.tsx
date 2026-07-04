@@ -4,6 +4,7 @@ import { Plus, Search, Brain, Clock, Settings } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { ChatListItem } from './ChatListItem'
 import { UserCard } from './UserCard'
+import { useAuth } from '../auth/AuthContext'
 import type { ChatOut } from '../api/types'
 import styles from './Sidebar.module.css'
 
@@ -49,6 +50,7 @@ export function Sidebar({
   onSelect: (id: string) => void
   onNewChat: () => void
 }) {
+  const { user } = useAuth()
   const [query, setQuery] = useState('')
 
   const filtered = query
@@ -60,9 +62,11 @@ export function Sidebar({
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logoBlock}>
-        <CapyLogo size={48} />
+        <CapyLogo size={90} />
         <div className={styles.logoText}>
-          <span className={styles.logoSub}>локальный агент</span>
+          <span className={styles.logoSub}>
+            С возвращением, {user?.displayName || user?.username || 'гость'}
+          </span>
         </div>
       </div>
 

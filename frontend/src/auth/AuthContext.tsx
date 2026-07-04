@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import { createApiClient, type ApiClient } from '../api/client'
 import type { TokenResponse, UserOut } from '../api/types'
+// UserOut is used for both registration and the /users/me profile fetch.
 import { clearSession, loadSession, saveSession } from './storage'
 
 type User = { username: string; displayName: string }
@@ -19,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initial = loadSession()
   const [token, setToken] = useState<string | null>(initial?.token ?? null)
   const [user, setUser] = useState<User | null>(
-    initial ? { username: initial.username, displayName: initial.username } : null,
+    initial ? { username: initial.username, displayName: initial.displayName ?? initial.username } : null,
   )
   const tokenRef = useRef<string | null>(token)
   tokenRef.current = token
@@ -38,9 +39,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(
     async (username: string, password: string) => {
       const res = await api.post<TokenResponse>('/auth/login', { username, password })
-      saveSession({ token: res.access_token, username })
+      // Make the token available to the immediately-following /users/me request.
+      tokenRef.current = res.access_token
+      const me = await api.get<UserOut>('/users/me')
+      saveSession({ token: res.access_token, username: me.username, displayName: me.display_name })
       setToken(res.access_token)
-      setUser({ username, displayName: username })
+      setUser({ username: me.username, displayName: me.display_name })
     },
     [api],
   )

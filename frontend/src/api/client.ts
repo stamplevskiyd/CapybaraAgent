@@ -11,6 +11,7 @@ export class ApiError extends Error {
 export interface ApiClient {
   get<T>(path: string): Promise<T>
   post<T>(path: string, body?: unknown): Promise<T>
+  patch<T>(path: string, body?: unknown): Promise<T>
   stream(path: string, body: unknown): Promise<Response>
 }
 
@@ -44,6 +45,12 @@ export function createApiClient(opts: {
     post: (path, body) =>
       json(path, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+    patch: (path, body) =>
+      json(path, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
       }),

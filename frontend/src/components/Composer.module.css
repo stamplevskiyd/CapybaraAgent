@@ -1,4 +1,6 @@
 .composer {
+  width: 100%;
+  box-sizing: border-box;
   background: rgba(28, 24, 20, 0.62);
   backdrop-filter: blur(30px) saturate(1.5);
   -webkit-backdrop-filter: blur(30px) saturate(1.5);

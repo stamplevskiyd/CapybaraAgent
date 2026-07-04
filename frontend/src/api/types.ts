@@ -13,8 +13,14 @@ export interface TokenResponse {
 export interface ChatOut {
   id: string
   title: string
+  model: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ModelsOut {
+  provider: string
+  models: string[]
 }
 
 export interface MessageOut {

@@ -14,19 +14,22 @@
 /* ── Logo lockup ── */
 .logoBlock {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 18px;
 }
 
 .logoText {
   display: flex;
   flex-direction: column;
+  align-items: center;
 }
 
 .logoSub {
-  font-size: 11px;
-  color: #8a8178;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-align: center;
 }
 
 /* ── New-chat button ── */
@@ -137,16 +140,15 @@
   color: #f0e6db;
 }
 
-.dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
+.chatIcon {
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.22);
+  color: var(--text-faint);
 }
 
-.dotActive {
-  background: var(--accent);
+.chatIconActive {
+  color: var(--accent);
 }
 
 .chatTitle {
