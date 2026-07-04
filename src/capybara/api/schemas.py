@@ -72,6 +72,7 @@ class ChatOut(BaseModel):
     id: UUID
     title: str
     model: str | None
+    is_favorite: bool
     created_at: datetime
     updated_at: datetime
 

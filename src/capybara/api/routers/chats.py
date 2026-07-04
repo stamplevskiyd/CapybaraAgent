@@ -76,6 +76,7 @@ async def get_chat(
         id=chat.id,
         title=chat.title,
         model=chat.model,
+        is_favorite=chat.is_favorite,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
         messages=[MessageOut.model_validate(m) for m in rows],
@@ -195,9 +196,7 @@ async def regenerate_message(
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(
-                chat_id, model, last_user_content, history
-            ):
+            async for event in service.stream_turn(chat_id, model, last_user_content, history):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):

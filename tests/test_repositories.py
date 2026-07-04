@@ -152,6 +152,26 @@ async def test_chat_repo_create_persists_model(session) -> None:  # type: ignore
     assert reloaded.model == "llama3.1:8b"
 
 
+async def test_chat_repo_toggle_favorite(session) -> None:  # type: ignore[no-untyped-def]
+    """A chat defaults to not-favorite and can be flipped via update."""
+    from capybara.db.models import User
+    from capybara.repositories.chat_repo import ChatRepo
+    from capybara.security.passwords import hash_password
+
+    user = User(username="favuser", display_name="F", password_hash=hash_password("password123"))
+    session.add(user)
+    await session.flush()
+
+    repo = ChatRepo(session)
+    chat = await repo.create(user.id, title="c")
+    assert chat.is_favorite is False
+
+    await repo.update(chat, is_favorite=True)
+    reloaded = await repo.get(chat.id)
+    assert reloaded is not None
+    assert reloaded.is_favorite is True
+
+
 async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
     """list(FieldEquals(...)) returns only rows matching the filter value."""
     user = await _seed_user(session)
