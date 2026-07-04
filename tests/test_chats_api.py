@@ -376,3 +376,32 @@ async def test_regenerate_without_model_returns_409(client: AsyncClient) -> None
     chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]  # no model
     resp = await client.post(f"/chats/{chat_id}/messages/regenerate")
     assert resp.status_code == 409
+
+
+async def test_patch_chat_rename_only(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"title": "Переименовано"})
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Переименовано"
+    assert resp.json()["model"] == "test-model"  # untouched
+
+
+async def test_patch_chat_favorite_only(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"is_favorite": True})
+    assert resp.status_code == 200
+    assert resp.json()["is_favorite"] is True
+
+
+async def test_patch_chat_empty_body_422(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={})
+    assert resp.status_code == 422
+
+
+async def test_patch_chat_model_still_validates(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    ok = await client.patch(f"/chats/{chat_id}", json={"model": "test-model"})
+    assert ok.status_code == 200
+    bad = await client.patch(f"/chats/{chat_id}", json={"model": "ghost:1b"})
+    assert bad.status_code == 409

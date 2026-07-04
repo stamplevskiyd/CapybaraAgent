@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class UserCreate(BaseModel):
@@ -33,9 +33,18 @@ class ChatCreate(BaseModel):
 
 
 class ChatUpdate(BaseModel):
-    """Payload for changing a chat's selected model."""
+    """Partial update for a chat: any of title, model, or favorite. At least one required."""
 
-    model: str = Field(min_length=1, max_length=128)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    model: str | None = Field(default=None, min_length=1, max_length=128)
+    is_favorite: bool | None = None
+
+    @model_validator(mode="after")
+    def _require_one(self) -> ChatUpdate:
+        """Reject an empty patch — at least one field must be provided."""
+        if self.title is None and self.model is None and self.is_favorite is None:
+            raise ValueError("at least one of title, model, is_favorite must be provided")
+        return self
 
 
 class ModelsOut(BaseModel):

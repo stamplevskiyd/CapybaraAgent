@@ -84,18 +84,23 @@ async def get_chat(
 
 
 @router.patch("/{chat_id}", response_model=ChatOut)
-async def update_chat_model(
+async def update_chat(
     payload: ChatUpdate,
     chat: Annotated[Chat, Depends(get_owned_chat)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
     agent: Annotated[BaseAgent, Depends(get_agent)],
 ) -> ChatOut:
-    """Set the chat's model after validating it is installed; 404 if not owned."""
-    try:
-        await agent.ensure_available(payload.model)
-    except (ModelUnavailableError, ModelProviderError) as exc:
-        _raise_for_model_error(exc)
-    updated = await chats.update(chat, model=payload.model)
+    """Update a chat's title, model, and/or favorite flag; 404 if not owned.
+
+    The model, when provided, is validated against the live provider list first
+    (409 unavailable / 502 provider down). Title and favorite need no validation.
+    """
+    if payload.model is not None:
+        try:
+            await agent.ensure_available(payload.model)
+        except (ModelUnavailableError, ModelProviderError) as exc:
+            _raise_for_model_error(exc)
+    updated = await chats.update(chat, **payload.model_dump(exclude_none=True))
     return ChatOut.model_validate(updated)
 
 
