@@ -1,12 +1,5 @@
 /* Thread layout: fills the chat pane, scrollable viewport, message list. */
 
-/* Streaming caret keyframe (mirrors tokens.css for self-contained module). */
-@keyframes blink {
-  0%, 45% { opacity: 1; }
-  50%, 95% { opacity: 0; }
-  100% { opacity: 1; }
-}
-
 /* Root: fills all available height, no overflow — Viewport handles scrolling. */
 .root {
   flex: 1;

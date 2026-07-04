@@ -6,9 +6,8 @@
  * MarkdownText → CodeBlock), verifying the Task 5 gap: that fenced code blocks routed through
  * MarkdownTextPrimitive do honour our components.code override.
  */
-import { render, screen } from '@testing-library/react'
+import { render, screen, renderHook } from '@testing-library/react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
-import { renderHook } from '@testing-library/react'
 import { useChatRuntime } from '../chat/runtime'
 import { Thread } from './Thread'
 
