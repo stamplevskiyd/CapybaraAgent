@@ -27,9 +27,6 @@ export function useChatStream(chatId: string | null) {
   const chatIdRef = useRef(chatId)
   chatIdRef.current = chatId
 
-  const messagesRef = useRef<ChatMessage[]>([])
-  messagesRef.current = messages
-
   const abortRef = useRef<AbortController | null>(null)
 
   /** Loads the chat history and initializes the message list. */
@@ -54,24 +51,30 @@ export function useChatStream(chatId: string | null) {
     }
   }, [api, chatId])
 
-  /** Sends a user message and streams the assistant reply via SSE. */
-  const send = useCallback(
-    async (text: string, chatIdOverride?: string) => {
-      const id = chatIdOverride ?? chatIdRef.current
-      if (!id) return
-      const assistantId = localId()
-      setMessages((prev) => [
-        ...prev,
-        { id: localId(), role: 'user', content: text, streaming: false },
-        { id: assistantId, role: 'assistant', content: '', streaming: true },
-      ])
+  /**
+   * Shared SSE streaming helper used by both `send` and `regenerate`.
+   *
+   * Opens a POST SSE stream to `url` with `body`, patches the assistant message
+   * identified by `assistantId` with incoming delta/done/error events, and
+   * handles abort and error semantics consistently:
+   * - Abort (cancel) settles the message without marking it as an error.
+   * - Network or API errors set `error: true` with a generic message.
+   * - `sending` is set to `true` for the duration and `false` on completion.
+   *
+   * @param assistantId - Local ID of the assistant message row to patch.
+   * @param url - API path to POST to (e.g. `/chats/${id}/messages`).
+   * @param body - Request body; pass `{}` for endpoints that take no meaningful body
+   *   (api.stream JSON.stringifies every body, so `{}` → `"{}"` which FastAPI ignores).
+   */
+  const streamAssistant = useCallback(
+    async (assistantId: string, url: string, body: unknown) => {
       const patch = (fn: (m: ChatMessage) => ChatMessage) =>
         setMessages((prev) => prev.map((m) => (m.id === assistantId ? fn(m) : m)))
       const controller = new AbortController()
       abortRef.current = controller
       setSending(true)
       try {
-        const res = await api.stream(`/chats/${id}/messages`, { content: text }, controller.signal)
+        const res = await api.stream(url, body, controller.signal)
         if (!res.body) throw new Error('no stream')
         for await (const ev of parseSse(res.body, controller.signal)) {
           if (ev.event === 'delta') {
@@ -104,27 +107,50 @@ export function useChatStream(chatId: string | null) {
     [api],
   )
 
+  /** Sends a user message and streams the assistant reply via SSE. */
+  const send = useCallback(
+    async (text: string, chatIdOverride?: string) => {
+      const id = chatIdOverride ?? chatIdRef.current
+      if (!id) return
+      const assistantId = localId()
+      setMessages((prev) => [
+        ...prev,
+        { id: localId(), role: 'user', content: text, streaming: false },
+        { id: assistantId, role: 'assistant', content: '', streaming: true },
+      ])
+      await streamAssistant(assistantId, `/chats/${id}/messages`, { content: text })
+    },
+    [streamAssistant],
+  )
+
   /** Aborts any in-flight stream, settling the assistant message without marking it as an error. */
   const cancel = useCallback(() => {
     abortRef.current?.abort()
   }, [])
 
   /**
-   * Drops the last assistant message and re-sends the last user message.
+   * Drops the trailing assistant message (if present) and requests a fresh reply
+   * from the backend via POST /chats/{id}/messages/regenerate.
    *
-   * Reads the current messages snapshot via a ref so that the latest value is
-   * available synchronously (avoids depending on the setState updater being
-   * called before the surrounding async function continues).
+   * The backend uses the persisted last user message to regenerate, so no new user
+   * row is created and no user bubble is appended here. Only the last message is
+   * removed when it is an assistant — a user-only tail is left untouched.
+   *
+   * An empty body `{}` is sent because `api.stream` JSON-stringifies its body
+   * argument; the FastAPI endpoint accepts a POST with no meaningful body and
+   * ignores the `{}` payload.
    */
   const regenerate = useCallback(async () => {
-    const currentMessages = messagesRef.current
-    const lastUser = [...currentMessages].reverse().find((m) => m.role === 'user')
-    const lastAssistantIdx = currentMessages.map((m) => m.role).lastIndexOf('assistant')
-    if (lastAssistantIdx !== -1) {
-      setMessages((prev) => prev.filter((_, i) => i !== lastAssistantIdx))
-    }
-    if (lastUser) await send(lastUser.content)
-  }, [send])
+    const id = chatIdRef.current
+    if (!id) return
+    const assistantId = localId()
+    setMessages((prev) => {
+      const last = prev[prev.length - 1]
+      const withoutLast = last?.role === 'assistant' ? prev.slice(0, -1) : prev
+      return [...withoutLast, { id: assistantId, role: 'assistant', content: '', streaming: true }]
+    })
+    await streamAssistant(assistantId, `/chats/${id}/messages/regenerate`, {})
+  }, [streamAssistant])
 
   return { messages, sending, loadingHistory, send, loadHistory, cancel, regenerate }
 }

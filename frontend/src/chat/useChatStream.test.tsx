@@ -68,22 +68,44 @@ test('cancel stops an in-flight stream and settles the message', async () => {
   expect(assistant.error).toBeFalsy()
 })
 
-test('regenerate re-sends the last user message', async () => {
-  let calls = 0
+test('regenerate calls /messages/regenerate and replaces the last assistant without duplicating the user bubble', async () => {
+  let regenerateCalled = false
+
   server.use(
-    http.post('/api/chats/c1/messages', async ({ request }) => {
-      calls++
-      const { content } = (await request.json()) as { content: string }
+    http.post('/api/chats/c1/messages', () =>
+      new HttpResponse(
+        'event: delta\ndata: {"text":"Первый ответ"}\n\nevent: done\ndata: {"message_id":"m1"}\n\n',
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    ),
+    http.post('/api/chats/c1/messages/regenerate', () => {
+      regenerateCalled = true
       return new HttpResponse(
-        `event: delta\ndata: {"text":"${content}!"}\n\nevent: done\ndata: {"message_id":"m${calls}"}\n\n`,
+        'event: delta\ndata: {"text":"Другой ответ"}\n\nevent: done\ndata: {"message_id":"m2"}\n\n',
         { headers: { 'Content-Type': 'text/event-stream' } },
       )
     }),
   )
+
   const { result } = renderHook(() => useChatStream('c1'), { wrapper })
+
+  // Seed: send a message so state has one user + one assistant message.
   await act(async () => { await result.current.send('Привет') })
+  await waitFor(() => expect(result.current.sending).toBe(false))
+
+  const usersBefore = result.current.messages.filter((m) => m.role === 'user').length
+
+  // Regenerate: should hit the new endpoint, not re-append a user bubble.
   await act(async () => { await result.current.regenerate() })
-  expect(calls).toBe(2)
-  const assistants = result.current.messages.filter((m) => m.role === 'assistant')
-  expect(assistants.at(-1)!.content).toBe('Привет!')
+  await waitFor(() => expect(result.current.sending).toBe(false))
+
+  // (a) The regenerate endpoint was hit.
+  expect(regenerateCalled).toBe(true)
+  // (b) User bubble count is unchanged — no duplicate.
+  expect(result.current.messages.filter((m) => m.role === 'user').length).toBe(usersBefore)
+  // (c) Last assistant message contains the regenerated text.
+  const lastAssistant = result.current.messages.filter((m) => m.role === 'assistant').at(-1)!
+  expect(lastAssistant.content).toBe('Другой ответ')
+  // (d) Sending is settled.
+  expect(result.current.sending).toBe(false)
 })
