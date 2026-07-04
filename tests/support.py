@@ -9,11 +9,19 @@ from capybara.config import Settings
 
 
 class FakeAgent(BaseAgent):
-    def __init__(self, settings: Settings, output_text: str) -> None:
+    """Agent backed by pydantic-ai TestModel with a fixed, configurable model list."""
+
+    def __init__(
+        self, settings: Settings, output_text: str, models: tuple[str, ...] = ("test-model",)
+    ) -> None:
         self._output_text = output_text
+        self._models = list(models)
         super().__init__(settings)
 
-    def _create_model(self, settings: Settings) -> Model:
+    async def list_models(self) -> list[str]:
+        return list(self._models)
+
+    def _build_model(self, name: str) -> Model:
         return TestModel(custom_output_text=self._output_text)
 
 
@@ -24,11 +32,15 @@ class RaisingAgent(BaseAgent):
         self._message = message
         super().__init__(settings)
 
-    def _create_model(self, settings: Settings) -> Model:
+    async def list_models(self) -> list[str]:
+        return ["test-model"]
+
+    def _build_model(self, name: str) -> Model:
         return TestModel()
 
     async def stream_reply(
         self,
+        model_name: str,
         user_content: str,
         history: list[ModelMessage],
         acc: ReplyAccumulator,
@@ -46,11 +58,15 @@ class PartialThenFailAgent(BaseAgent):
         self._message = message
         super().__init__(settings)
 
-    def _create_model(self, settings: Settings) -> Model:
+    async def list_models(self) -> list[str]:
+        return ["test-model"]
+
+    def _build_model(self, name: str) -> Model:
         return TestModel()
 
     async def stream_reply(
         self,
+        model_name: str,
         user_content: str,
         history: list[ModelMessage],
         acc: ReplyAccumulator,

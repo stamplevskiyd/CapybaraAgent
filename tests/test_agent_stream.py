@@ -12,7 +12,7 @@ async def test_stream_reply_yields_deltas_and_fills_accumulator(
 ) -> None:
     agent = FakeAgent(settings, "Привет, Роман")
     acc = ReplyAccumulator()
-    chunks = [delta async for delta in agent.stream_reply("Привет", [], acc)]
+    chunks = [delta async for delta in agent.stream_reply("test-model", "Привет", [], acc)]
     assert "".join(chunks) == "Привет, Роман"
     assert acc.text == "Привет, Роман"
     assert acc.model == "test"

@@ -1,6 +1,17 @@
 """Agent abstractions for LLM interaction."""
 
-from capybara.agent.base import BaseAgent, ReplyAccumulator
+from capybara.agent.base import (
+    BaseAgent,
+    ModelProviderError,
+    ModelUnavailableError,
+    ReplyAccumulator,
+)
 from capybara.agent.ollama import OllamaAgent
 
-__all__ = ["BaseAgent", "OllamaAgent", "ReplyAccumulator"]
+__all__ = [
+    "BaseAgent",
+    "ModelProviderError",
+    "ModelUnavailableError",
+    "OllamaAgent",
+    "ReplyAccumulator",
+]
