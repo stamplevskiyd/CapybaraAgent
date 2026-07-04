@@ -289,3 +289,114 @@
 .popoverItem:hover {
   background: rgba(224, 138, 122, 0.12);
 }
+
+.chatRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 10px;
+  padding: 0 4px;
+}
+.chatRow:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.chatRowActive {
+  background: rgba(255, 255, 255, 0.08);
+}
+.chatTitleBtn {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #d6cdc3;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 2px;
+  cursor: pointer;
+}
+.chatTitleBtn .chatTitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+.star,
+.menuBtn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #8a8178;
+  cursor: pointer;
+  border-radius: 6px;
+}
+.star:hover,
+.menuBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6ddd3;
+}
+.starOn {
+  color: var(--accent, #d89b6c);
+}
+.renameInput {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(216, 155, 108, 0.5);
+  background: rgba(0, 0, 0, 0.28);
+  color: #f2ece4;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+}
+.menuBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+.menu {
+  position: fixed;
+  min-width: 190px;
+  background: rgba(40, 35, 30, 0.97);
+  backdrop-filter: blur(30px) saturate(1.5);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 5px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+}
+.menuItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: none;
+  background: transparent;
+  color: #e6ddd3;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  border-radius: 8px;
+  text-align: left;
+}
+.menuItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.menuItemDanger {
+  color: #e08a7a;
+}
+.menuItemDanger:hover {
+  background: rgba(224, 138, 122, 0.12);
+}
+.menuSep {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 4px 6px;
+}
