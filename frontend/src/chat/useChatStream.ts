@@ -16,7 +16,7 @@ let counter = 0
 const localId = () => `local-${counter++}`
 
 /** Owns chat message state: history load + live SSE streaming, cancel, and regenerate. */
-export function useChatStream(chatId: string | null) {
+export function useChatStream(chatId: string | null, onTitle?: (title: string) => void) {
   const api = useApiClient()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sending, setSending] = useState(false)
@@ -26,6 +26,9 @@ export function useChatStream(chatId: string | null) {
   // effects or adding to dependency arrays.
   const chatIdRef = useRef(chatId)
   chatIdRef.current = chatId
+
+  const onTitleRef = useRef(onTitle)
+  onTitleRef.current = onTitle
 
   const abortRef = useRef<AbortController | null>(null)
 
@@ -85,6 +88,9 @@ export function useChatStream(chatId: string | null) {
           } else if (ev.event === 'error') {
             const { message } = JSON.parse(ev.data) as { message: string }
             patch((m) => ({ ...m, streaming: false, error: true, content: message }))
+          } else if (ev.event === 'title') {
+            const { title } = JSON.parse(ev.data) as { title: string }
+            onTitleRef.current?.(title)
           }
         }
         // reader.cancel() from abort causes the loop to exit without throwing;

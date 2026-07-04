@@ -12,6 +12,7 @@ export interface ApiClient {
   get<T>(path: string): Promise<T>
   post<T>(path: string, body?: unknown): Promise<T>
   patch<T>(path: string, body?: unknown): Promise<T>
+  del(path: string): Promise<void>
   stream(path: string, body: unknown, signal?: AbortSignal): Promise<Response>
 }
 
@@ -54,6 +55,10 @@ export function createApiClient(opts: {
         headers: { 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
+    del: async (path) => {
+      const res = await request(path, { method: 'DELETE' })
+      if (!res.ok) throw new ApiError(res.status, await res.text())
+    },
     stream: (path, body, signal) =>
       stream(path, {
         method: 'POST',

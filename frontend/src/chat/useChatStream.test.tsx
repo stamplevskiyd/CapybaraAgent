@@ -68,6 +68,25 @@ test('cancel stops an in-flight stream and settles the message', async () => {
   expect(assistant.error).toBeFalsy()
 })
 
+test('invokes onTitle when a title event arrives', async () => {
+  const onTitle = vi.fn()
+  server.use(
+    http.post('/api/chats/c1/messages', () => {
+      const body =
+        'event: delta\ndata: {"text":"Хай"}\n\n' +
+        'event: done\ndata: {"message_id":"m1"}\n\n' +
+        'event: title\ndata: {"title":"Про капибар"}\n\n'
+      return new HttpResponse(body, { headers: { 'Content-Type': 'text/event-stream' } })
+    }),
+  )
+  const { result } = renderHook(() => useChatStream('c1', onTitle), { wrapper })
+  await act(async () => {
+    await result.current.send('Привет')
+  })
+  await waitFor(() => expect(result.current.sending).toBe(false))
+  expect(onTitle).toHaveBeenCalledWith('Про капибар')
+})
+
 test('regenerate calls /messages/regenerate and replaces the last assistant without duplicating the user bubble', async () => {
   let regenerateCalled = false
 
