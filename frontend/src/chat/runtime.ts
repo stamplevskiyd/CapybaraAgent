@@ -1,6 +1,5 @@
 /** Bridge our chat store to assistant-ui via ExternalStoreRuntime. */
 import { useExternalStoreRuntime, type AppendMessage } from '@assistant-ui/react'
-import type { StartRunConfig } from '@assistant-ui/core'
 import { convertMessage } from './convertMessage'
 import type { ChatMessage } from './useChatStream'
 
@@ -43,7 +42,7 @@ export function useChatRuntime(opts: {
     },
     // The ExternalStoreAdapter.onReload signature passes (parentId, config);
     // we ignore those and simply forward to our own onReload().
-    onReload: async (_parentId: string | null, _config: StartRunConfig) => {
+    onReload: async (_parentId, _config) => {
       await opts.onReload()
     },
     onCancel: async () => {

@@ -18,7 +18,7 @@ test('builds a runtime and exposes append that calls onSend', async () => {
   // the runtime converts it to AppendMessage { content: [{ type:'text', text }] }
   // which our onNew extracts and forwards to opts.onSend.
   await act(async () => {
-    result.current.thread.append('hello')
+    await result.current.thread.append('hello')
   })
   expect(onSend).toHaveBeenCalledWith('hello')
 })
