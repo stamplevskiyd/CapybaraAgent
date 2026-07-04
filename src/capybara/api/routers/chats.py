@@ -99,7 +99,7 @@ async def send_message(
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(chat_id, payload.content, history):
+            async for event in service.stream_turn(chat_id, payload.content, history):  # type: ignore[call-arg,arg-type]
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):

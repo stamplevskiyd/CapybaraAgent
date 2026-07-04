@@ -18,7 +18,7 @@ async def _seed_chat(engine: AsyncEngine, make_user, username: str) -> tuple[obj
     maker = create_sessionmaker(engine)
     async with maker() as setup:
         user = await make_user(setup, username=username, display_name=username)
-        chat = Chat(user_id=user.id, title="c")
+        chat = Chat(user_id=user.id, title="c", model="test-model")
         setup.add(chat)
         await setup.commit()
         return user.id, chat.id
@@ -34,8 +34,8 @@ async def test_stream_turn_streams_and_persists(
 
     service = ChatService(maker, FakeAgent(settings, "Ответ"))
 
-    history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
-    events = [e async for e in service.stream_turn(chat_id, "Вопрос", history)]  # type: ignore[arg-type]
+    model, history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+    events = [e async for e in service.stream_turn(chat_id, model, "Вопрос", history)]  # type: ignore[arg-type]
 
     deltas = [e for e in events if isinstance(e, Delta)]
     done = [e for e in events if isinstance(e, Done)]
@@ -66,10 +66,10 @@ async def test_stream_turn_persists_partial_on_stream_error(
 
     service = ChatService(maker, PartialThenFailAgent(settings, "Частич", "boom"))
 
-    history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+    model, history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
     events = []
     with pytest.raises(RuntimeError):
-        async for e in service.stream_turn(chat_id, "Вопрос", history):  # type: ignore[arg-type]
+        async for e in service.stream_turn(chat_id, model, "Вопрос", history):  # type: ignore[arg-type]
             events.append(e)
 
     assert events == [Delta(text="Частич")]  # exactly one delta, no Done
@@ -96,9 +96,9 @@ async def test_stream_turn_does_not_persist_empty_assistant_on_immediate_error(
 
     service = ChatService(maker, RaisingAgent(settings, "boom"))
 
-    history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+    model, history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
     with pytest.raises(RuntimeError):
-        async for _ in service.stream_turn(chat_id, "Вопрос", history):  # type: ignore[arg-type]
+        async for _ in service.stream_turn(chat_id, model, "Вопрос", history):  # type: ignore[arg-type]
             pass
 
     async with maker() as check:
@@ -128,7 +128,7 @@ async def test_begin_turn_excludes_incomplete_from_history(
         await setup.commit()
 
     service = ChatService(maker, FakeAgent(settings, "x"))
-    history = await service.begin_turn(user_id, chat_id, "q2")  # type: ignore[arg-type]
+    _, history = await service.begin_turn(user_id, chat_id, "q2")  # type: ignore[arg-type]
 
     reply_texts = [
         part.content
@@ -153,6 +153,32 @@ async def test_begin_turn_rejects_missing_chat(
 
     with pytest.raises(ChatNotFoundError):
         await service.begin_turn(user_id, uuid4(), "Вопрос")  # type: ignore[arg-type]
+
+
+async def test_begin_turn_rejects_model_not_installed(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """A chat whose model is not in the agent's live list is rejected before any write."""
+    from capybara.agent import ModelUnavailableError
+
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup, username="badmodel", display_name="B")
+        chat = Chat(user_id=user.id, title="c", model="ghost:1b")
+        setup.add(chat)
+        await setup.commit()
+        user_id, chat_id = user.id, chat.id
+
+    # FakeAgent only offers "test-model", so "ghost:1b" is unavailable.
+    service = ChatService(maker, FakeAgent(settings, "x"))
+    with pytest.raises(ModelUnavailableError):
+        await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+
+    async with maker() as check:
+        stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
+    assert stored == []  # user message must NOT be written when the model is invalid
 
 
 async def test_begin_turn_rejects_foreign_chat(

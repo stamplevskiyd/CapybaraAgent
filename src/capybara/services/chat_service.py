@@ -31,36 +31,40 @@ class ChatService:
 
     async def begin_turn(
         self, user_id: UUID, chat_id: UUID, user_content: str
-    ) -> list[ModelMessage]:
-        """Verify ownership, persist the user message, and load history — all up front.
+    ) -> tuple[str, list[ModelMessage]]:
+        """Verify ownership, validate the model, persist the user message, load history.
 
-        Runs on one short-lived session that is committed and closed before the LLM
-        stream starts, so no DB connection is held for the duration of the stream.  The
-        ownership check and the user-message write share a single transaction, so a chat
-        that vanishes between the two cannot leave an orphaned message.
+        The model on the chat is validated against the provider's live list *before* the
+        user message is written, so an unusable model never leaves an orphaned message and
+        the error surfaces before any SSE bytes are sent.
+
+        Returns:
+            The validated model name and the pydantic-ai history.
 
         Raises:
             ChatNotFoundError: If the chat does not exist or is not owned by *user_id*.
-                The caller surfaces this as a 404 *before* any SSE bytes are sent.
+            ModelUnavailableError: If the chat's model is unset or not installed.
+            ModelProviderError: If the model provider cannot be reached.
         """
         async with self._sessionmaker() as session:
             chats = ChatRepo(session)
             chat = await chats.get(chat_id)
             if chat is None or chat.user_id != user_id:
                 raise ChatNotFoundError(chat_id)
+            await self._agent.ensure_available(chat.model)
+            model = chat.model
+            assert model is not None  # ensure_available rejects None
             messages = MessageRepo(session)
-            # Incomplete assistant replies (half-streamed turns that failed) are kept for
-            # the UI but excluded here, so a partial answer never re-enters model context.
             history_rows = await messages.list(
                 FieldEquals(Message.chat_id, chat_id),
                 FieldEquals(Message.incomplete, False),
             )
             await messages.create(chat_id=chat_id, role="user", content=user_content)
             await session.commit()
-        return self._agent.to_model_messages(history_rows)
+        return model, self._agent.to_model_messages(history_rows)
 
     async def stream_turn(
-        self, chat_id: UUID, user_content: str, history: list[ModelMessage]
+        self, chat_id: UUID, model_name: str, user_content: str, history: list[ModelMessage]
     ) -> AsyncIterator[StreamEvent]:
         """Stream the LLM reply as Delta events and persist the assistant message.
 
@@ -75,7 +79,7 @@ class ChatService:
         acc = ReplyAccumulator()
         completed = False
         try:
-            async for delta in self._agent.stream_reply(user_content, history, acc):
+            async for delta in self._agent.stream_reply(model_name, user_content, history, acc):
                 yield Delta(text=delta)
             completed = True
         finally:
