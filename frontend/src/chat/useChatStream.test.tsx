@@ -65,6 +65,7 @@ test('cancel stops an in-flight stream and settles the message', async () => {
   await waitFor(() => expect(result.current.sending).toBe(false))
   const assistant = result.current.messages.find((m) => m.role === 'assistant')!
   expect(assistant.streaming).toBe(false)
+  expect(assistant.error).toBeFalsy()
 })
 
 test('regenerate re-sends the last user message', async () => {

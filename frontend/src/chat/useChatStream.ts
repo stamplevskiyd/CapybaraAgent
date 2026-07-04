@@ -1,3 +1,4 @@
+/** Chat message store: history load + live SSE streaming, cancel, and regenerate. */
 import { useCallback, useRef, useState } from 'react'
 import { useApiClient } from '../auth/AuthContext'
 import { parseSse } from '../api/sse'
@@ -31,6 +32,7 @@ export function useChatStream(chatId: string | null) {
 
   const abortRef = useRef<AbortController | null>(null)
 
+  /** Loads the chat history and initializes the message list. */
   const loadHistory = useCallback(async () => {
     if (!chatId) {
       setMessages([])
@@ -52,6 +54,7 @@ export function useChatStream(chatId: string | null) {
     }
   }, [api, chatId])
 
+  /** Sends a user message and streams the assistant reply via SSE. */
   const send = useCallback(
     async (text: string, chatIdOverride?: string) => {
       const id = chatIdOverride ?? chatIdRef.current
