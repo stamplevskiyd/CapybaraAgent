@@ -81,3 +81,30 @@
   opacity: 0.4;
   pointer-events: none;
 }
+
+.modelSelect {
+  height: 31px;
+  max-width: 200px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 0 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+.modelSelect:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.modelSelectInvalid {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.modelSelect option {
+  color: #241a12;
+}
