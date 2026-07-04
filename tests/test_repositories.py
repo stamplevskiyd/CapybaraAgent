@@ -4,8 +4,8 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from capybara.db.models import User
-from capybara.filters import FieldEquals, OwnedByUser
+from capybara.db.models import Chat, Message, User
+from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
@@ -36,7 +36,7 @@ async def test_chat_repo_create_list_get(session: AsyncSession) -> None:
     chat = await chats.create(user.id, "Sales Q2")
     assert chat.title == "Sales Q2"
     assert (await chats.get(chat.id)).id == chat.id  # type: ignore[union-attr]
-    listed = await chats.list(OwnedByUser(user.id))
+    listed = await chats.list(FieldEquals(Chat.user_id, user.id))
     assert [c.id for c in listed] == [chat.id]
 
 
@@ -54,7 +54,7 @@ async def test_message_repo_add_and_order(session: AsyncSession) -> None:
     await messages.create(
         chat_id=chat.id, role="assistant", content="Здравствуйте", model="test-model"
     )
-    ordered = await messages.list(FieldEquals("chat_id", chat.id))
+    ordered = await messages.list(FieldEquals(Message.chat_id, chat.id))
     assert [m.role for m in ordered] == ["user", "assistant"]
     assert ordered[1].model == "test-model"
 
@@ -102,7 +102,7 @@ async def test_message_repo_seq_ordering(session: AsyncSession) -> None:
     # seq must be monotonically increasing regardless of created_at equality.
     assert user_msg.seq < assistant_msg.seq
 
-    ordered = await repo.list(FieldEquals("chat_id", chat.id))
+    ordered = await repo.list(FieldEquals(Message.chat_id, chat.id))
     assert [m.role for m in ordered] == ["user", "assistant"]
 
 
@@ -142,6 +142,6 @@ async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
     await msgs.create(chat_id=chat1.id, role="user", content="in chat1")
     await msgs.create(chat_id=chat2.id, role="user", content="in chat2")
 
-    result = await msgs.list(FieldEquals("chat_id", chat1.id))
+    result = await msgs.list(FieldEquals(Message.chat_id, chat1.id))
     assert len(result) == 1
     assert result[0].content == "in chat1"

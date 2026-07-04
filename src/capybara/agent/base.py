@@ -46,6 +46,8 @@ class BaseAgent(ABC):
                 history.append(ModelRequest(parts=[UserPromptPart(content=message.content)]))
             elif message.role == "assistant":
                 history.append(ModelResponse(parts=[TextPart(content=message.content)]))
+            else:
+                raise ValueError(f"Unknown message role: {message.role!r}")
         return history
 
     async def stream_reply(

@@ -1,3 +1,4 @@
+import pytest
 from pydantic_ai.messages import ModelRequest, ModelResponse
 
 from capybara.agent.base import BaseAgent, ReplyAccumulator
@@ -27,3 +28,10 @@ def test_to_model_messages_maps_roles() -> None:
     assert len(history) == 2
     assert isinstance(history[0], ModelRequest)
     assert isinstance(history[1], ModelResponse)
+
+
+def test_to_model_messages_rejects_unknown_role() -> None:
+    """An unexpected role is a hard error, not a silently dropped message."""
+    msgs = [Message(chat_id=None, role="system", content="be nice")]  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="Unknown message role"):
+        BaseAgent.to_model_messages(msgs)

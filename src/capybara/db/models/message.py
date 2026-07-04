@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, ForeignKey, Identity, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Identity, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,11 +15,18 @@ from capybara.db.mixins import TimestampMixin
 if TYPE_CHECKING:
     from capybara.db.models.chat import Chat
 
+#: Roles a stored message may carry. Slice 1 only produces ``user`` and ``assistant``;
+#: ``system`` and others are out of scope until a later slice relaxes this constraint.
+MESSAGE_ROLES: tuple[str, ...] = ("user", "assistant")
+
+_ROLE_CHECK = ", ".join(f"'{role}'" for role in MESSAGE_ROLES)
+
 
 class Message(Base, TimestampMixin):
     """ORM model representing a single message within a chat."""
 
     __tablename__ = "messages"
+    __table_args__ = (CheckConstraint(f"role IN ({_ROLE_CHECK})", name="ck_messages_role"),)
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     chat_id: Mapped[UUID] = mapped_column(ForeignKey("chats.id"), index=True)

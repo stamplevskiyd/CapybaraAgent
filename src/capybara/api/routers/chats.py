@@ -4,10 +4,10 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.api.dependencies import (
     get_chat_repo,
@@ -15,7 +15,6 @@ from capybara.api.dependencies import (
     get_current_user,
     get_message_repo,
     get_owned_chat,
-    get_session,
 )
 from capybara.api.schemas import (
     ChatCreate,
@@ -24,11 +23,11 @@ from capybara.api.schemas import (
     MessageCreate,
     MessageOut,
 )
-from capybara.db.models import Chat, User
-from capybara.filters import FieldEquals, OwnedByUser
+from capybara.db.models import Chat, Message, User
+from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
-from capybara.services.chat_service import ChatService
+from capybara.services.chat_service import ChatNotFoundError, ChatService
 from capybara.services.events import Delta, Done, Error
 
 logger = logging.getLogger(__name__)
@@ -53,7 +52,7 @@ async def list_chats(
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
 ) -> list[ChatOut]:
     """Return all chats for the current user, ordered by most recently updated."""
-    rows = await chats.list(OwnedByUser(user.id))
+    rows = await chats.list(FieldEquals(Chat.user_id, user.id))
     return [ChatOut.model_validate(c) for c in rows]
 
 
@@ -63,7 +62,7 @@ async def get_chat(
     messages: Annotated[MessageRepo, Depends(get_message_repo)],
 ) -> ChatDetailOut:
     """Return a chat with its full message history, or 404 if not found or not owned."""
-    rows = await messages.list(FieldEquals("chat_id", chat.id))
+    rows = await messages.list(FieldEquals(Message.chat_id, chat.id))
     return ChatDetailOut(
         id=chat.id,
         title=chat.title,
@@ -79,22 +78,27 @@ def _sse(event: str, data: dict[str, object]) -> str:
 
 @router.post("/{chat_id}/messages")
 async def send_message(
-    chat: Annotated[Chat, Depends(get_owned_chat)],
+    chat_id: UUID,
     payload: MessageCreate,
+    user: Annotated[User, Depends(get_current_user)],
     service: Annotated[ChatService, Depends(get_chat_service)],
-    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> StreamingResponse:
-    """Accept a user message, stream the LLM reply via SSE, and persist both messages."""
-    chat_id = chat.id
-    # Release the request DB connection before the (potentially slow) LLM stream:
-    # the auth/ownership reads are done, and the turn itself runs on its own
-    # short-lived sessions inside ChatService.  Otherwise this connection would
-    # be pinned for the whole stream and exhaust the pool under load.
-    await session.commit()
+    """Accept a user message, stream the LLM reply via SSE, and persist both messages.
+
+    Ownership is checked and the user message is saved up front on a short-lived
+    session; the LLM stream then runs holding no DB connection.  This endpoint does
+    not take a request-scoped session — ChatService owns its own session lifecycle.
+    """
+    try:
+        history = await service.begin_turn(user.id, chat_id, payload.content)
+    except ChatNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
+        ) from None
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(chat_id, payload.content):
+            async for event in service.stream_turn(chat_id, payload.content, history):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):
