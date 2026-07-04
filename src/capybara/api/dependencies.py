@@ -106,6 +106,11 @@ def get_agent(request: Request) -> BaseAgent:
     return cast(BaseAgent, request.app.state.agent)
 
 
+def get_sessionmaker(request: Request) -> async_sessionmaker[AsyncSession]:
+    """Return the app-wide async sessionmaker from lifespan state."""
+    return cast(async_sessionmaker[AsyncSession], request.app.state.sessionmaker)
+
+
 async def get_owned_chat(
     chat_id: UUID,
     user: Annotated[User, Depends(get_current_user)],
@@ -119,9 +124,8 @@ async def get_owned_chat(
 
 
 def get_chat_service(
-    chats: Annotated[ChatRepo, Depends(get_chat_repo)],
-    messages: Annotated[MessageRepo, Depends(get_message_repo)],
+    sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
     agent: Annotated[BaseAgent, Depends(get_agent)],
 ) -> ChatService:
-    """Return a ChatService wired with the request-scoped repos and agent."""
-    return ChatService(chats, messages, agent)
+    """Return a ChatService that owns short-lived sessions for the streaming turn."""
+    return ChatService(sessionmaker, agent)

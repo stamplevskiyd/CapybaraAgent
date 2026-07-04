@@ -1,81 +1,77 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+import pytest
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from capybara.config import Settings
+from capybara.db.engine import create_sessionmaker
+from capybara.db.models import Chat
 from capybara.filters import FieldEquals
-from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatService
 from capybara.services.events import Delta, Done
-from support import FakeAgent
+from support import FakeAgent, PartialThenFailAgent
+
+
+async def _seed_chat(engine: AsyncEngine, make_user, username: str) -> object:  # type: ignore[no-untyped-def]
+    """Persist a user and an empty chat, committed so short-lived sessions can see them."""
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup, username=username, display_name=username)
+        chat = Chat(user_id=user.id, title="c")
+        setup.add(chat)
+        await setup.commit()
+        return chat.id
 
 
 async def test_stream_turn_streams_and_persists(
-    session: AsyncSession,
+    engine: AsyncEngine,
     settings: Settings,
     make_user,  # type: ignore[no-untyped-def]
 ) -> None:
-    user = await make_user(session, username="roman", display_name="Роман")
-    chats, messages = ChatRepo(session), MessageRepo(session)
-    chat = await chats.create(user.id, "c")
+    chat_id = await _seed_chat(engine, make_user, "roman")
+    maker = create_sessionmaker(engine)
 
-    service = ChatService(chats, messages, FakeAgent(settings, "Ответ"))
+    service = ChatService(maker, FakeAgent(settings, "Ответ"))
 
-    events = [e async for e in service.stream_turn(chat.id, "Вопрос")]
+    events = [e async for e in service.stream_turn(chat_id, "Вопрос")]  # type: ignore[arg-type]
 
     deltas = [e for e in events if isinstance(e, Delta)]
     done = [e for e in events if isinstance(e, Done)]
     assert "".join(d.text for d in deltas) == "Ответ"
     assert len(done) == 1
 
-    stored = await messages.list(FieldEquals("chat_id", chat.id))
+    async with maker() as check:
+        stored = await MessageRepo(check).list(FieldEquals("chat_id", chat_id))
     assert [m.role for m in stored] == ["user", "assistant"]
     assert stored[1].content == "Ответ"
     assert stored[1].incomplete is False
 
 
-async def test_stream_turn_disconnect_saves_partial(
-    session: AsyncSession,
+async def test_stream_turn_persists_partial_on_stream_error(
+    engine: AsyncEngine,
     settings: Settings,
     make_user,  # type: ignore[no-untyped-def]
 ) -> None:
-    """Simulates a client disconnect mid-stream and verifies the partial assistant
-    message is persisted with incomplete=True.
+    """When the stream fails mid-reply, the partial assistant text is saved as incomplete.
 
-    Why not aclose(): calling aclose() on stream_turn throws GeneratorExit into
-    the generator while pydantic-ai's agent is still live.  pydantic-ai uses anyio
-    internally; anyio wraps the athrow in a cancel scope that then cancels the
-    SQLAlchemy session flush inside our finally block, so the DB write never
-    completes.  The identical code path (finally with completed=False) is reached
-    when stream_reply itself raises an exception mid-stream, which is what actually
-    happens on a real disconnect (the transport raises at the next send/recv).  We
-    therefore patch stream_reply to raise after yielding one partial delta.
+    This is the real failure mode behind ``incomplete=True``: an LLM/transport error
+    after some tokens have been streamed.  The user message must already be persisted,
+    and the partial assistant message recorded with ``incomplete=True``, before the
+    error propagates to the caller.
     """
-    user = await make_user(session, username="disconnect_user", display_name="Disconnect User")
-    chats, messages = ChatRepo(session), MessageRepo(session)
-    chat = await chats.create(user.id, "dc")
+    chat_id = await _seed_chat(engine, make_user, "err_user")
+    maker = create_sessionmaker(engine)
 
-    service = ChatService(chats, messages, FakeAgent(settings, "Частичный ответ"))
+    service = ChatService(maker, PartialThenFailAgent(settings, "Частич", "boom"))
 
-    # Patch stream_reply on the agent instance so that it yields one partial
-    # delta and then raises, reproducing an abrupt mid-stream abort.
-    async def _abort_after_first(user_content, history, acc):  # type: ignore[no-untyped-def]
-        acc.text += "Частич"
-        yield "Частич"
-        raise RuntimeError("simulated disconnect")
+    events = []
+    with pytest.raises(RuntimeError):
+        async for e in service.stream_turn(chat_id, "Вопрос"):  # type: ignore[arg-type]
+            events.append(e)
 
-    original = service._agent.stream_reply  # type: ignore[method-assign]
-    service._agent.stream_reply = _abort_after_first  # type: ignore[method-assign]
-    try:
-        events = []
-        try:
-            async for e in service.stream_turn(chat.id, "Вопрос"):
-                events.append(e)
-        except RuntimeError:
-            pass  # expected – propagates from stream_reply through stream_turn
-    finally:
-        service._agent.stream_reply = original  # type: ignore[method-assign]
+    assert events == [Delta(text="Частич")]  # exactly one delta, no Done
 
-    assert events == [Delta(text="Частич")]  # exactly one Delta, no Done
-    stored = await messages.list(FieldEquals("chat_id", chat.id))
-    assert stored[-1].role == "assistant"
+    async with maker() as check:
+        stored = await MessageRepo(check).list(FieldEquals("chat_id", chat_id))
+    assert [m.role for m in stored] == ["user", "assistant"]
     assert stored[-1].incomplete is True
+    assert stored[-1].content == "Частич"

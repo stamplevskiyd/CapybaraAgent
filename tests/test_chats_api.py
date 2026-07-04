@@ -2,12 +2,17 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from capybara.api.dependencies import get_agent, get_current_user, get_session
+from capybara.api.dependencies import (
+    get_agent,
+    get_current_user,
+    get_session,
+    get_sessionmaker,
+)
 from capybara.config import Settings
 from capybara.db.engine import create_sessionmaker
 from capybara.db.models import Chat, User
 from capybara.main import app
-from support import FakeAgent
+from support import FakeAgent, RaisingAgent
 
 
 @pytest_asyncio.fixture
@@ -37,6 +42,7 @@ async def client(engine, settings: Settings, make_user):  # type: ignore[no-unty
 
     app.dependency_overrides[get_session] = _override_session
     app.dependency_overrides[get_current_user] = _override_user
+    app.dependency_overrides[get_sessionmaker] = lambda: maker
     app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "Ответ агента")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -87,6 +93,40 @@ async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> Non
     fetched = await client.get(f"/chats/{chat_id}")
     roles = [m["role"] for m in fetched.json()["messages"]]
     assert roles == ["user", "assistant"]
+
+
+async def test_create_chat_title_too_long_returns_422(client: AsyncClient) -> None:
+    """A title beyond the column bound is rejected before reaching the DB."""
+    resp = await client.post("/chats", json={"title": "x" * 201})
+    assert resp.status_code == 422
+
+
+async def test_send_empty_message_returns_422(client: AsyncClient) -> None:
+    """Empty message content is rejected by request validation."""
+    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]
+    resp = await client.post(f"/chats/{chat_id}/messages", json={"content": ""})
+    assert resp.status_code == 422
+
+
+async def test_send_message_stream_error_is_generic(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """A failure mid-stream surfaces a generic SSE error, never the exception detail."""
+    chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]
+    secret = "SECRET-LEAK-should-not-appear-42"
+    app.dependency_overrides[get_agent] = lambda: RaisingAgent(settings, secret)
+
+    async with client.stream(
+        "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
+    ) as resp:
+        assert resp.status_code == 200
+        body = ""
+        async for chunk in resp.aiter_text():
+            body += chunk
+
+    assert "event: error" in body
+    assert secret not in body
+    assert "Internal server error" in body
 
 
 async def test_get_chat_owned_by_other_user_returns_404(

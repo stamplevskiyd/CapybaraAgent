@@ -68,6 +68,12 @@ async def test_login_missing_field_422(client: AsyncClient) -> None:
     assert resp.status_code == 422
 
 
+async def test_login_oversized_password_422(client: AsyncClient) -> None:
+    """An over-long password is rejected before hitting argon2 verification."""
+    resp = await client.post("/auth/login", json={"username": "roman", "password": "x" * 129})
+    assert resp.status_code == 422
+
+
 async def test_protected_route_with_token(client: AsyncClient) -> None:
     """Authenticated request to GET /chats returns 200 with empty list."""
     token = (

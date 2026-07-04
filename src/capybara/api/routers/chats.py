@@ -1,11 +1,13 @@
 """Router for chat and message endpoints."""
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.api.dependencies import (
     get_chat_repo,
@@ -13,6 +15,7 @@ from capybara.api.dependencies import (
     get_current_user,
     get_message_repo,
     get_owned_chat,
+    get_session,
 )
 from capybara.api.schemas import (
     ChatCreate,
@@ -27,6 +30,8 @@ from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatService
 from capybara.services.events import Delta, Done, Error
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -77,12 +82,19 @@ async def send_message(
     chat: Annotated[Chat, Depends(get_owned_chat)],
     payload: MessageCreate,
     service: Annotated[ChatService, Depends(get_chat_service)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> StreamingResponse:
     """Accept a user message, stream the LLM reply via SSE, and persist both messages."""
+    chat_id = chat.id
+    # Release the request DB connection before the (potentially slow) LLM stream:
+    # the auth/ownership reads are done, and the turn itself runs on its own
+    # short-lived sessions inside ChatService.  Otherwise this connection would
+    # be pinned for the whole stream and exhaust the pool under load.
+    await session.commit()
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(chat.id, payload.content):
+            async for event in service.stream_turn(chat_id, payload.content):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):
@@ -92,7 +104,8 @@ async def send_message(
                     )
                 elif isinstance(event, Error):
                     yield _sse("error", {"message": event.message})
-        except Exception as exc:  # surface as SSE error, never a broken stream
-            yield _sse("error", {"message": str(exc)})
+        except Exception:  # surface a generic SSE error, never a broken stream
+            logger.exception("chat stream failed for chat %s", chat_id)
+            yield _sse("error", {"message": "Internal server error while streaming the reply"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

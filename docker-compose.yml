@@ -24,6 +24,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://capybara:capybara@postgres:5432/capybara
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       DEFAULT_MODEL: llama3.1
+      # Local-first dev default; override with a real secret via the host env
+      # or a .env file. Must be >=32 chars (see capybara.config.Settings).
+      JWT_SECRET: ${JWT_SECRET:-dev-insecure-jwt-secret-change-me-please}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

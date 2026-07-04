@@ -28,13 +28,13 @@ class UserOut(BaseModel):
 class ChatCreate(BaseModel):
     """Payload for creating a new chat."""
 
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=200)
 
 
 class MessageCreate(BaseModel):
     """Payload for sending a message."""
 
-    content: str
+    content: str = Field(min_length=1, max_length=100_000)
 
 
 class MessageOut(BaseModel):
@@ -70,8 +70,8 @@ class ChatDetailOut(ChatOut):
 class LoginRequest(BaseModel):
     """Request body for logging in."""
 
-    username: str
-    password: str
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class TokenResponse(BaseModel):

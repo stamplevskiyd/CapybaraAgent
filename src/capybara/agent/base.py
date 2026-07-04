@@ -60,7 +60,5 @@ class BaseAgent(ABC):
                 acc.text += text
                 yield text
             run_usage = result.usage
-            acc.usage = (
-                {"total_tokens": run_usage.total_tokens} if run_usage.has_values() else None
-            )
+            acc.usage = {"total_tokens": run_usage.total_tokens} if run_usage.has_values() else None
             acc.model = result.response.model_name
