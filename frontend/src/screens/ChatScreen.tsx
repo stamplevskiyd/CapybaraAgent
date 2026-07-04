@@ -77,14 +77,13 @@ export function ChatScreen() {
     })()
   }, [activeChatId, pendingSend, send, reload])
 
-  /** Update the selected model; persists to localStorage and PATCHes the active chat if open. */
+  /** Update the selected model; persists to localStorage, updates draft, and PATCHes the active chat if open. */
   async function handleSelectModel(model: string) {
     saveLastModel(model)
+    setDraftModel(model)
     if (activeChatId) {
       await patchChatModel(api, activeChatId, model)
       await reload()
-    } else {
-      setDraftModel(model)
     }
   }
 

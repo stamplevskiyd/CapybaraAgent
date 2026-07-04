@@ -2,12 +2,20 @@
 
 const KEY = 'capybara.lastModel'
 
-/** Load the last-used model name from localStorage, or null if not set. */
+/** Load the last-used model name from localStorage, or null if unset/unavailable. */
 export function loadLastModel(): string | null {
-  return localStorage.getItem(KEY)
+  try {
+    return localStorage.getItem(KEY)
+  } catch {
+    return null
+  }
 }
 
-/** Persist the last-used model name to localStorage. */
+/** Persist the last-used model name for pre-selecting new chats. */
 export function saveLastModel(model: string): void {
-  localStorage.setItem(KEY, model)
+  try {
+    localStorage.setItem(KEY, model)
+  } catch {
+    // ignore storage failures — pre-selection is a convenience, not a requirement
+  }
 }
