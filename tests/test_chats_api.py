@@ -405,3 +405,39 @@ async def test_patch_chat_model_still_validates(client: AsyncClient) -> None:
     assert ok.status_code == 200
     bad = await client.patch(f"/chats/{chat_id}", json={"model": "ghost:1b"})
     assert bad.status_code == 409
+
+
+async def test_delete_chat_removes_it_and_messages(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    # produce a message so the cascade has something to remove
+    async with client.stream("POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}) as r:
+        async for _ in r.aiter_text():
+            pass
+
+    resp = await client.delete(f"/chats/{chat_id}")
+    assert resp.status_code == 204
+
+    gone = await client.get(f"/chats/{chat_id}")
+    assert gone.status_code == 404
+    listed = await client.get("/chats")
+    assert all(c["id"] != chat_id for c in listed.json())
+
+
+async def test_delete_other_users_chat_404(
+    client: AsyncClient,
+    engine,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    from capybara.db.engine import create_sessionmaker
+    from capybara.db.models import Chat
+
+    maker = create_sessionmaker(engine)
+    async with maker() as sess:
+        other = await make_user(sess, username="delother", display_name="O")
+        chat = Chat(user_id=other.id, title="private", model="test-model")
+        sess.add(chat)
+        await sess.commit()
+        other_chat_id = chat.id
+
+    resp = await client.delete(f"/chats/{other_chat_id}")
+    assert resp.status_code == 404

@@ -83,6 +83,15 @@ async def get_chat(
     )
 
 
+@router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat(
+    chat: Annotated[Chat, Depends(get_owned_chat)],
+    chats: Annotated[ChatRepo, Depends(get_chat_repo)],
+) -> None:
+    """Delete a chat and its messages (cascade); 404 if not owned."""
+    await chats.delete(chat)
+
+
 @router.patch("/{chat_id}", response_model=ChatOut)
 async def update_chat(
     payload: ChatUpdate,
