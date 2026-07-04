@@ -350,3 +350,32 @@ async def test_regenerate_turn_rejects_unavailable_model(
 
     with pytest.raises(ModelUnavailableError):
         await service.regenerate_turn(user_id, chat_id)  # type: ignore[arg-type]
+
+
+async def test_generate_title_sets_title_only_when_default(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """Title is generated for a default-titled chat, and skipped for a renamed one."""
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup, username="titler", display_name="T")
+        default_chat = Chat(user_id=user.id, model="test-model")  # title defaults
+        named_chat = Chat(user_id=user.id, title="Моё имя", model="test-model")
+        setup.add_all([default_chat, named_chat])
+        await setup.commit()
+        default_id, named_id = default_chat.id, named_chat.id
+
+    service = ChatService(maker, FakeAgent(settings, "Сгенерённый заголовок"))
+
+    t1 = await service.generate_title(default_id, "О чём поговорим?")
+    assert t1 == "Сгенерённый заголовок"
+    t2 = await service.generate_title(named_id, "О чём поговорим?")
+    assert t2 is None  # already has a custom title → skipped
+
+    async with maker() as check:
+        from capybara.repositories.chat_repo import ChatRepo
+
+        assert (await ChatRepo(check).get(default_id)).title == "Сгенерённый заголовок"  # type: ignore[union-attr]
+        assert (await ChatRepo(check).get(named_id)).title == "Моё имя"  # type: ignore[union-attr]

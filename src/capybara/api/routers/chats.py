@@ -172,6 +172,10 @@ async def send_message(
                         "done",
                         {"message_id": event.message_id, "usage": event.usage},
                     )
+            if not history:  # first turn → derive a title without delaying the answer
+                title = await service.generate_title(chat_id, payload.content)
+                if title:
+                    yield _sse("title", {"title": title})
         except Exception:  # surface a generic SSE error, never a broken stream
             logger.exception("chat stream failed for chat %s", chat_id)
             yield _sse("error", {"message": "Internal server error while streaming the reply"})

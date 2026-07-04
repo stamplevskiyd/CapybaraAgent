@@ -1,5 +1,6 @@
 """Chat service orchestrating message persistence and LLM streaming."""
 
+import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -8,10 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent.base import BaseAgent, ReplyAccumulator
 from capybara.db.models import Message
+from capybara.db.models.chat import DEFAULT_CHAT_TITLE
 from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.events import Delta, Done, StreamEvent
+
+logger = logging.getLogger(__name__)
 
 
 class ChatNotFoundError(Exception):
@@ -145,14 +149,33 @@ class ChatService:
                     await messages.delete(msg)
 
             # History is all complete messages strictly before the last user message
-            history_rows = [
-                m for m in all_messages if m.seq < last_user.seq and not m.incomplete
-            ]
+            history_rows = [m for m in all_messages if m.seq < last_user.seq and not m.incomplete]
             last_user_content = last_user.content
 
             await session.commit()
 
         return model, last_user_content, self._agent.to_model_messages(history_rows)
+
+    async def generate_title(self, chat_id: UUID, first_user_message: str) -> str | None:
+        """Generate and persist a chat title from the first user message.
+
+        Only acts on a chat that still has the default title and a selected model; returns
+        the new title, or ``None`` when skipped or on failure. Never raises — a title is a
+        nicety and must not affect the reply stream.
+        """
+        try:
+            async with self._sessionmaker() as session:
+                chats = ChatRepo(session)
+                chat = await chats.get(chat_id)
+                if chat is None or chat.title != DEFAULT_CHAT_TITLE or chat.model is None:
+                    return None
+                title = await self._agent.generate_title(chat.model, first_user_message)
+                await chats.update(chat, title=title)
+                await session.commit()
+                return title
+        except Exception:
+            logger.exception("title generation failed for chat %s", chat_id)
+            return None
 
     async def _persist_assistant(
         self, chat_id: UUID, acc: ReplyAccumulator, *, completed: bool

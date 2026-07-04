@@ -441,3 +441,24 @@ async def test_delete_other_users_chat_404(
 
     resp = await client.delete(f"/chats/{other_chat_id}")
     assert resp.status_code == 404
+
+
+def _sse_events(body: str) -> list[str]:
+    return [ln[len("event: ") :] for ln in body.splitlines() if ln.startswith("event: ")]
+
+
+async def test_first_message_emits_title_event(client: AsyncClient) -> None:
+    """The first turn of a default-titled chat emits an SSE title event; later turns do not."""
+    chat_id = (await client.post("/chats", json={"model": "test-model"})).json()[
+        "id"
+    ]  # default title
+
+    async with client.stream("POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}) as r:
+        first = "".join([c async for c in r.aiter_text()])
+    assert "title" in _sse_events(first)
+    assert "event: title" in first
+
+    # Second turn: title already set → no title event.
+    async with client.stream("POST", f"/chats/{chat_id}/messages", json={"content": "Ещё"}) as r:
+        second = "".join([c async for c in r.aiter_text()])
+    assert "title" not in _sse_events(second)
