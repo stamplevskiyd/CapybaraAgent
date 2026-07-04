@@ -1,0 +1,47 @@
+:root {
+  /* Accent */
+  --accent: #D89B6C;
+
+  /* Background */
+  --bg: #0d0c0b;
+
+  /* Glow layers */
+  --glow-a: rgba(206, 120, 58, 0.38);
+  --glow-b: rgba(120, 80, 150, 0.26);
+
+  /* Text */
+  --text-primary: #F2ECE4;
+  --text-secondary: #e8dfd5;
+  --text-muted: #a29a90;
+  --text-faint: #8a8178;
+
+  /* Status */
+  --success: #6FBF8E;
+  --error: #E08A7A;
+  --warn: #E0B15A;
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(6%, 4%) scale(1.12); }
+}
+
+@keyframes drift2 {
+  0%, 100% { transform: translate(0, 0) scale(1.05); }
+  50% { transform: translate(-5%, -6%) scale(1); }
+}
+
+@keyframes blink {
+  0%, 45% { opacity: 1; }
+  50%, 95% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

@@ -1,0 +1,163 @@
+/* Auth screen — full-screen centered layout over the background glow */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px;
+}
+
+/* Header: logo + wordmark + tagline */
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.wordmark {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.tagline {
+  font-size: 13px;
+  color: #8a8178;
+}
+
+/* Glass card */
+.card {
+  width: 100%;
+  max-width: 396px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: rgba(28, 24, 20, 0.6);
+  backdrop-filter: blur(34px) saturate(1.5);
+  -webkit-backdrop-filter: blur(34px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 26px 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.42);
+}
+
+.title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #a29a90;
+  margin: 0 0 8px;
+}
+
+/* Label + input field */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field span {
+  font-size: 12px;
+  color: #a29a90;
+}
+
+.field input {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.field input:focus {
+  border-color: rgba(216, 155, 108, 0.45);
+}
+
+/* Inline error message */
+.error {
+  font-size: 13px;
+  color: var(--error);
+  background: rgba(224, 138, 122, 0.1);
+  border: 1px solid rgba(224, 138, 122, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+/* Primary submit button */
+.primary {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 11px;
+  border: none;
+  background: var(--accent);
+  color: #241a12;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(216, 155, 108, 0.32);
+  transition: opacity 0.15s;
+}
+
+.primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.primary:not(:disabled):hover {
+  opacity: 0.88;
+}
+
+/* Mode-switch link row */
+.switch {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.switch button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.switch button:hover {
+  opacity: 0.8;
+}
+
+/* Footer lock line */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #726a61;
+  text-align: center;
+}
