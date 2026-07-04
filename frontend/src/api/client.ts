@@ -12,7 +12,7 @@ export interface ApiClient {
   get<T>(path: string): Promise<T>
   post<T>(path: string, body?: unknown): Promise<T>
   patch<T>(path: string, body?: unknown): Promise<T>
-  stream(path: string, body: unknown): Promise<Response>
+  stream(path: string, body: unknown, signal?: AbortSignal): Promise<Response>
 }
 
 export function createApiClient(opts: {
@@ -54,11 +54,12 @@ export function createApiClient(opts: {
         headers: { 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
-    stream: (path, body) =>
+    stream: (path, body, signal) =>
       stream(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal,
       }),
   }
 }

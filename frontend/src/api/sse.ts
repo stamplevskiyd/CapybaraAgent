@@ -1,14 +1,23 @@
 export type SseEvent = { event: string; data: string }
 
-/** Parse a fetch ReadableStream of SSE bytes into typed events. */
+/**
+ * Parse a fetch ReadableStream of SSE bytes into typed events.
+ *
+ * Accepts an optional AbortSignal; when the signal fires the reader is
+ * cancelled so the async generator terminates cleanly.
+ */
 export async function* parseSse(
   stream: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncGenerator<SseEvent> {
   const reader = stream.getReader()
+  const onAbort = () => { reader.cancel() }
+  signal?.addEventListener('abort', onAbort, { once: true })
   const decoder = new TextDecoder()
   let buffer = ''
   try {
     for (;;) {
+      if (signal?.aborted) break
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
@@ -20,6 +29,7 @@ export async function* parseSse(
       }
     }
   } finally {
+    signal?.removeEventListener('abort', onAbort)
     reader.releaseLock()
   }
 }
