@@ -31,3 +31,17 @@ test('streams assistant deltas into a message', async () => {
   expect(assistant.content).toBe('Привет, Роман')
   expect(assistant.streaming).toBe(false)
 })
+
+test('a pre-stream error does not leave the assistant bubble streaming', async () => {
+  server.use(
+    http.post('/api/chats/c1/messages', () => new HttpResponse('gone', { status: 404 })),
+  )
+  const { result } = renderHook(() => useChatStream('c1'), { wrapper })
+  await act(async () => {
+    await result.current.send('Привет')
+  })
+  await waitFor(() => expect(result.current.sending).toBe(false))
+  const assistant = result.current.messages.find((m) => m.role === 'assistant')!
+  expect(assistant.streaming).toBe(false)
+  expect(assistant.error).toBe(true)
+})

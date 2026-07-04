@@ -34,6 +34,11 @@ export function createApiClient(opts: {
     if (!res.ok) throw new ApiError(res.status, await res.text())
     return (await res.json()) as T
   }
+  async function stream(path: string, init: RequestInit): Promise<Response> {
+    const res = await request(path, init)
+    if (!res.ok) throw new ApiError(res.status, await res.text())
+    return res
+  }
   return {
     get: (path) => json(path, { method: 'GET' }),
     post: (path, body) =>
@@ -43,7 +48,7 @@ export function createApiClient(opts: {
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
     stream: (path, body) =>
-      request(path, {
+      stream(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
