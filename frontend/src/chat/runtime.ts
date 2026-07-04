@@ -42,7 +42,7 @@ export function useChatRuntime(opts: {
     },
     // The ExternalStoreAdapter.onReload signature passes (parentId, config);
     // we ignore those and simply forward to our own onReload().
-    onReload: async (_parentId, _config) => {
+    onReload: async () => {
       await opts.onReload()
     },
     onCancel: async () => {

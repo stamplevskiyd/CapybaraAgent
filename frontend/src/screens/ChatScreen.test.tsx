@@ -1,8 +1,23 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitForElementToBeRemoved } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { server, http, HttpResponse } from '../test/msw'
 import { AuthProvider } from '../auth/AuthContext'
 import { ChatScreen } from './ChatScreen'
+
+// ThreadPrimitive.Viewport uses ResizeObserver and scrollTo for autoscroll detection;
+// jsdom does not provide these, so install no-op stubs.
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  }
+  if (typeof HTMLElement.prototype.scrollTo === 'undefined') {
+    HTMLElement.prototype.scrollTo = () => {}
+  }
+})
 
 beforeEach(() =>
   localStorage.setItem('capybara.session', JSON.stringify({ token: 't', username: 'roman' })),
@@ -57,5 +72,50 @@ test('composer lists fetched models and blocks send until a model is valid', asy
   expect(await screen.findByRole('option', { name: 'llama3.1:8b' })).toBeInTheDocument()
 
   await userEvent.selectOptions(screen.getByLabelText('Модель'), 'llama3.1:8b')
+  await userEvent.type(screen.getByRole('textbox'), 'Привет') // Send also gates on non-empty input
   expect(sendBtn).not.toBeDisabled()
+})
+
+test('shows a loading indicator while chat history is being fetched', async () => {
+  const chat = {
+    id: 'c2',
+    title: 'Мой чат',
+    model: 'llama3.1:8b',
+    created_at: new Date().toISOString(),
+    updated_at: '',
+  }
+
+  let resolveChat!: () => void
+  const chatDelay = new Promise<void>((r) => {
+    resolveChat = r
+  })
+
+  server.use(
+    http.get('/api/models', () =>
+      HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
+    ),
+    http.get('/api/chats', () => HttpResponse.json([chat])),
+    http.get('/api/chats/:id', async () => {
+      await chatDelay
+      return HttpResponse.json({ ...chat, messages: [] })
+    }),
+  )
+
+  render(
+    <AuthProvider>
+      <ChatScreen />
+    </AuthProvider>,
+  )
+
+  // Wait for the sidebar chat item to appear, then click to select the chat
+  await userEvent.click(await screen.findByText('Мой чат'))
+
+  // Loading indicator should appear while history is being fetched
+  expect(await screen.findByRole('status')).toBeInTheDocument()
+
+  // Resolve the delayed response so history loading completes
+  resolveChat()
+
+  // Loading indicator should disappear once the request settles
+  await waitForElementToBeRemoved(() => screen.queryByRole('status'))
 })
