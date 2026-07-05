@@ -7,7 +7,11 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from capybara.agent.base import BaseAgent, ModelProviderError
+from capybara.agent.base import (
+    BaseAgent,
+    EmbeddingModelUnavailableError,
+    ModelProviderError,
+)
 
 
 class OllamaAgent(BaseAgent):
@@ -49,14 +53,24 @@ class OllamaAgent(BaseAgent):
         """Return embeddings for *texts* via Ollama's native ``/api/embed`` endpoint.
 
         Raises:
-            ModelProviderError: If Ollama cannot be reached or returns an unexpected shape.
+            EmbeddingModelUnavailableError: If Ollama answers 404 — the server is up but
+                the embedding model is not pulled (the common, actionable failure).
+            ModelProviderError: If Ollama cannot be reached, or returns any other error
+                status or an unexpected body shape.
         """
         url = f"{self._settings.ollama_base_url}/api/embed"
         payload = {"model": self._settings.embedding_model, "input": list(texts)}
         try:
             async with self._client_factory() as client:
                 response = await client.post(url, json=payload)
-                response.raise_for_status()
+        except httpx.HTTPError as exc:
+            # Request never completed → server genuinely unreachable.
+            raise ModelProviderError(self._settings.ollama_base_url) from exc
+        if response.status_code == 404:
+            # Ollama responded — the embedding model just isn't installed.
+            raise EmbeddingModelUnavailableError(self._settings.embedding_model)
+        try:
+            response.raise_for_status()
             data = response.json()
             return [list(vector) for vector in data["embeddings"]]
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
