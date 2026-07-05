@@ -33,10 +33,7 @@ test('login stores token and hydrates display name from /users/me', async () => 
 })
 
 test('logout clears session', async () => {
-  localStorage.setItem(
-    'capybara.session',
-    JSON.stringify({ token: 'x', username: 'roman' }),
-  )
+  localStorage.setItem('capybara.session', JSON.stringify({ token: 'x', username: 'roman' }))
   const { result } = renderHook(() => useAuth(), { wrapper })
   expect(result.current.token).toBe('x')
   act(() => result.current.logout())

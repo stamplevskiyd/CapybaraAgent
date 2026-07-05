@@ -4,8 +4,23 @@ import type { CSSProperties } from 'react'
 const mono = "'JetBrains Mono', monospace"
 
 export const prismTheme: Record<string, CSSProperties> = {
-  'code[class*="language-"]': { color: '#d6cdc3', fontFamily: mono, fontSize: '12.5px', lineHeight: 1.7, background: 'none' },
-  'pre[class*="language-"]': { color: '#d6cdc3', fontFamily: mono, fontSize: '12.5px', lineHeight: 1.7, background: 'none', margin: 0, padding: 0, overflow: 'auto' },
+  'code[class*="language-"]': {
+    color: '#d6cdc3',
+    fontFamily: mono,
+    fontSize: '12.5px',
+    lineHeight: 1.7,
+    background: 'none',
+  },
+  'pre[class*="language-"]': {
+    color: '#d6cdc3',
+    fontFamily: mono,
+    fontSize: '12.5px',
+    lineHeight: 1.7,
+    background: 'none',
+    margin: 0,
+    padding: 0,
+    overflow: 'auto',
+  },
   comment: { color: '#7a7268' },
   prolog: { color: '#7a7268' },
   doctype: { color: '#7a7268' },

@@ -20,7 +20,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initial = loadSession()
   const [token, setToken] = useState<string | null>(initial?.token ?? null)
   const [user, setUser] = useState<User | null>(
-    initial ? { username: initial.username, displayName: initial.displayName ?? initial.username } : null,
+    initial
+      ? { username: initial.username, displayName: initial.displayName ?? initial.username }
+      : null,
   )
   const tokenRef = useRef<string | null>(token)
   tokenRef.current = token

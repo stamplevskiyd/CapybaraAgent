@@ -25,7 +25,11 @@ export function CodeBlock({ code, language }: { code: string; language?: string 
         </button>
       </div>
       <div className={styles.body}>
-        <SyntaxHighlighter language={language} style={prismTheme} customStyle={{ background: 'none', margin: 0, padding: 0 }}>
+        <SyntaxHighlighter
+          language={language}
+          style={prismTheme}
+          customStyle={{ background: 'none', margin: 0, padding: 0 }}
+        >
           {code}
         </SyntaxHighlighter>
       </div>

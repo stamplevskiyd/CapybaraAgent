@@ -26,17 +26,20 @@ test('stream throws ApiError on a non-ok pre-stream response', async () => {
     http.post('/api/chats/x/messages', () => new HttpResponse('not found', { status: 404 })),
   )
   const client = createApiClient({ getToken: () => 't0ken', onUnauthorized: () => {} })
-  await expect(
-    client.stream('/chats/x/messages', { content: 'hi' }),
-  ).rejects.toMatchObject({ name: 'ApiError', status: 404 })
+  await expect(client.stream('/chats/x/messages', { content: 'hi' })).rejects.toMatchObject({
+    name: 'ApiError',
+    status: 404,
+  })
 })
 
 test('stream returns the streaming response when ok', async () => {
   server.use(
-    http.post('/api/chats/x/messages', () =>
-      new HttpResponse('event: done\ndata: {}\n\n', {
-        headers: { 'Content-Type': 'text/event-stream' },
-      }),
+    http.post(
+      '/api/chats/x/messages',
+      () =>
+        new HttpResponse('event: done\ndata: {}\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        }),
     ),
   )
   const client = createApiClient({ getToken: () => 't0ken', onUnauthorized: () => {} })

@@ -120,7 +120,12 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
           // fetch itself was aborted before the response body started
           patch((m) => ({ ...m, streaming: false }))
         } else {
-          patch((m) => ({ ...m, streaming: false, error: true, content: 'Ошибка при получении ответа.' }))
+          patch((m) => ({
+            ...m,
+            streaming: false,
+            error: true,
+            content: 'Ошибка при получении ответа.',
+          }))
         }
       } finally {
         // Only settle shared state if we're still the active stream — a newer send

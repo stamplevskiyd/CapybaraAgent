@@ -11,7 +11,13 @@ const MODELS = ['llama3.1:8b', 'qwen2.5:14b']
 function withRuntime(ui: (onSend: ReturnType<typeof vi.fn>) => React.ReactNode) {
   const onSend = vi.fn().mockResolvedValue(undefined)
   const { result } = renderHook(() =>
-    useChatRuntime({ messages: [], isRunning: false, onSend, onReload: vi.fn(), onCancel: vi.fn() }),
+    useChatRuntime({
+      messages: [],
+      isRunning: false,
+      onSend,
+      onReload: vi.fn(),
+      onCancel: vi.fn(),
+    }),
   )
   render(<AssistantRuntimeProvider runtime={result.current}>{ui(onSend)}</AssistantRuntimeProvider>)
   return onSend
@@ -40,7 +46,9 @@ test('blocks send when selected model is not in the list', async () => {
 
 test('selecting a model calls onSelectModel', async () => {
   const onSelectModel = vi.fn()
-  withRuntime(() => <Composer models={MODELS} selectedModel="llama3.1:8b" onSelectModel={onSelectModel} />)
+  withRuntime(() => (
+    <Composer models={MODELS} selectedModel="llama3.1:8b" onSelectModel={onSelectModel} />
+  ))
   await userEvent.selectOptions(screen.getByRole('combobox'), 'qwen2.5:14b')
   expect(onSelectModel).toHaveBeenCalledWith('qwen2.5:14b')
 })

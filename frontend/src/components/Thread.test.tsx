@@ -70,7 +70,10 @@ test('fenced code block renders CodeBlock copy button (Task 5 gap)', () => {
 })
 
 /** Seed with N assistant turns so "last message" gating can be exercised. */
-function seedMessages(messages: Parameters<typeof useChatRuntime>[0]['messages'], isRunning = false) {
+function seedMessages(
+  messages: Parameters<typeof useChatRuntime>[0]['messages'],
+  isRunning = false,
+) {
   const { result } = renderHook(() =>
     useChatRuntime({
       messages,

@@ -17,7 +17,12 @@ test('emits no parts for empty content (typing-indicator placeholder)', () => {
 })
 
 test('marks a streaming message as running, settled otherwise', () => {
-  const streaming: ChatMessage = { id: 'm2', role: 'assistant', content: 'partial', streaming: true }
+  const streaming: ChatMessage = {
+    id: 'm2',
+    role: 'assistant',
+    content: 'partial',
+    streaming: true,
+  }
   const done: ChatMessage = { id: 'm3', role: 'assistant', content: 'full', streaming: false }
   expect(convertMessage(streaming).status?.type).toBe('running')
   expect(convertMessage(done).status).toBeUndefined()
