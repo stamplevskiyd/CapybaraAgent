@@ -86,3 +86,35 @@ class PartialThenFailAgent(BaseAgent):
         acc.text += self._partial
         yield self._partial
         raise RuntimeError(self._message)
+
+
+class StubMemoryAgent(FakeAgent):
+    """FakeAgent with a fixed embedding map and canned structured extraction output.
+
+    ``embeddings`` maps input text → vector (unknown texts get a fixed non-zero vector so
+    cosine distance is always defined). ``extracted`` is the dict fed to the extraction
+    output tool, e.g. ``{"facts": [{"content": "...", "category": "personal"}]}``.
+    """
+
+    def __init__(  # type: ignore[no-untyped-def]
+        self,
+        settings,
+        *,
+        output_text="Ответ",
+        embeddings=None,
+        extracted=None,
+        models=("test-model",),
+    ):
+        super().__init__(settings, output_text=output_text, models=models)
+        self._embeddings = embeddings or {}
+        self._extracted = extracted or {"facts": []}
+
+    async def embed(self, texts):  # type: ignore[no-untyped-def]
+        return [self._embeddings.get(t, [0.0] * 767 + [1.0]) for t in texts]
+
+    def _build_model(self, name: str) -> Model:
+        return TestModel(
+            custom_output_text=self._output_text,
+            custom_output_args=self._extracted,
+            call_tools=[],
+        )
