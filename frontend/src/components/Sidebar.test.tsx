@@ -12,6 +12,8 @@ test('deferred nav items are disabled', () => {
       <Sidebar
         chats={[]}
         activeChatId={null}
+        collapsed={false}
+        onToggleCollapse={() => {}}
         onSelect={() => {}}
         onNewChat={() => {}}
         onToggleFavorite={() => {}}
@@ -36,6 +38,8 @@ test('favorites appear under an Избранное group above date groups', () 
       <Sidebar
         chats={chats}
         activeChatId={null}
+        collapsed={false}
+        onToggleCollapse={() => {}}
         onSelect={() => {}}
         onNewChat={() => {}}
         onToggleFavorite={() => {}}

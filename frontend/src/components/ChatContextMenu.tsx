@@ -1,5 +1,6 @@
 /** Floating context menu for a chat row: rename, favorite toggle, and delete (with confirm). */
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Pencil, Star, Trash2 } from 'lucide-react'
 import styles from './Sidebar.module.css'
 
@@ -22,7 +23,11 @@ export function ChatContextMenu({
   onClose: () => void
 }) {
   const [confirming, setConfirming] = useState(false)
-  return (
+  // Portal to <body>: the sidebar's backdrop-filter creates a containing block +
+  // stacking context that would otherwise trap this position:fixed menu inside the
+  // sidebar — the part overflowing into the main pane paints behind it and stops
+  // registering clicks. Rendering at the document root frees it to sit above all.
+  return createPortal(
     <div className={styles.menuBackdrop} onClick={onClose} role="presentation">
       <div
         className={styles.menu}
@@ -34,7 +39,12 @@ export function ChatContextMenu({
           <Pencil size={14} />
           Переименовать
         </button>
-        <button type="button" className={styles.menuItem} role="menuitem" onClick={onToggleFavorite}>
+        <button
+          type="button"
+          className={styles.menuItem}
+          role="menuitem"
+          onClick={onToggleFavorite}
+        >
           <Star size={14} />
           {isFavorite ? 'Убрать из избранного' : 'В избранное'}
         </button>
@@ -49,6 +59,7 @@ export function ChatContextMenu({
           {confirming ? 'Точно удалить?' : 'Удалить'}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

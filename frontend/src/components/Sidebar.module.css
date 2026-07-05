@@ -1,6 +1,20 @@
+/* Clipping frame: animates width 284 → 0. The inner keeps its fixed width so the
+ * content is clipped (not reflowed) as the sidebar slides shut. */
 .sidebar {
-  width: 284px;
   flex-shrink: 0;
+  height: 100%;
+  width: 284px;
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+.sidebarCollapsed {
+  width: 0;
+}
+
+.sidebarInner {
+  position: relative;
+  width: 284px;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -11,25 +25,71 @@
   box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.03);
 }
 
-/* ── Logo lockup ── */
+/* ── Logo lockup (horizontal: mark + wordmark + collapse button) ── */
 .logoBlock {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 18px;
+  gap: 11px;
+  padding: 18px 18px 14px;
+}
+
+.logoMark {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logoText {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  line-height: 1.05;
+  min-width: 0;
+}
+
+.logoTitle {
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 600;
+  font-size: 15.5px;
+  letter-spacing: -0.2px;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .logoSub {
-  font-size: 13px;
-  color: var(--text-primary);
-  text-align: center;
+  font-size: 11px;
+  color: #8a8178;
+  margin-top: 1px;
+}
+
+/* Absolutely positioned at a fixed top offset so it sits at the same height as the
+ * floating expand button (in ChatScreen) — the toggle never jumps between modes and
+ * stays clear of the active-chat header divider. */
+.collapseBtn {
+  position: absolute;
+  top: 11px;
+  right: 14px;
+  z-index: 2;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.collapseBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
 }
 
 /* ── New-chat button ── */
@@ -116,47 +176,6 @@
 .groupStar {
   color: var(--accent, #d89b6c);
   margin-top: -1px;
-}
-
-/* ── Chat item (used by ChatListItem) ── */
-.chatItem {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: calc(100% - 16px);
-  margin: 1px 8px;
-  padding: 7px 10px;
-  border-radius: 9px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #b3aaa0;
-  font-size: 13px;
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s ease;
-  overflow: hidden;
-}
-
-.chatItem:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.chatItemActive {
-  background: rgba(216, 155, 108, 0.13);
-  border-color: rgba(216, 155, 108, 0.28);
-  color: #f0e6db;
-}
-
-.chatIcon {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  color: var(--text-faint);
-}
-
-.chatIconActive {
-  color: var(--accent);
 }
 
 .chatTitle {
@@ -302,14 +321,20 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  border: 1px solid transparent;
   border-radius: 10px;
   padding: 0 4px;
 }
 .chatRow:hover {
   background: rgba(255, 255, 255, 0.05);
 }
-.chatRowActive {
-  background: rgba(255, 255, 255, 0.08);
+.chatRowActive,
+.chatRowActive:hover {
+  background: rgba(216, 155, 108, 0.13);
+  border-color: rgba(216, 155, 108, 0.28);
+}
+.chatRowActive .chatTitleBtn {
+  color: #f0e6db;
 }
 .chatTitleBtn {
   flex: 1;

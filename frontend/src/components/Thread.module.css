@@ -54,6 +54,15 @@
 .avatar {
   flex-shrink: 0;
   margin-top: 2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Assistant content column: markdown text + action bar. */
@@ -97,22 +106,31 @@
   color: #d6cdc3;
 }
 
-/* Scroll-to-bottom floating button. */
+/* Scroll-to-bottom button: sticks to the visible bottom of the scroll viewport
+ * (not to a spot in the text), and only appears while there is content below the
+ * fold. assistant-ui disables the button when already at the bottom, so `:disabled`
+ * fades it out. The negative top margin overlays it on the content instead of
+ * adding empty scroll space, and margin auto centers it horizontally. */
 .scrollBtn {
-  position: absolute;
+  position: sticky;
   bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  margin: -34px auto 0;
   width: 34px;
   height: 34px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(38, 33, 28, 0.9);
   color: #d6cdc3;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.scrollBtn:disabled {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Typing indicator: three pulsing dots shown before the first token of a streaming reply. */

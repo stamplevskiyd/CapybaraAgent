@@ -55,7 +55,7 @@ function AssistantMessage() {
   return (
     <MessagePrimitive.Root className={styles.assistantRow}>
       <div className={styles.avatar}>
-        <CapyLogo size={30} />
+        <CapyLogo size={20} />
       </div>
       <div className={styles.assistantContent}>
         <MessagePrimitive.Content components={{ Text: MarkdownText }} />

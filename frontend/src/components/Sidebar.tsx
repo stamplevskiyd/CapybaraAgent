@@ -1,11 +1,10 @@
 /** Sidebar: logo, new-chat, search, favorites + date-grouped chat list, deferred nav, user card. */
 import { useState } from 'react'
-import { Plus, Search, Brain, Clock, Settings, Star } from 'lucide-react'
+import { Plus, Search, Brain, Clock, Settings, Star, PanelLeft } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { ChatListItem } from './ChatListItem'
 import { ChatContextMenu } from './ChatContextMenu'
 import { UserCard } from './UserCard'
-import { useAuth } from '../auth/AuthContext'
 import type { ChatOut } from '../api/types'
 import styles from './Sidebar.module.css'
 
@@ -36,6 +35,8 @@ function groupChats(chats: ChatOut[]): { label: string; items: ChatOut[] }[] {
 export function Sidebar({
   chats,
   activeChatId,
+  collapsed,
+  onToggleCollapse,
   onSelect,
   onNewChat,
   onToggleFavorite,
@@ -44,13 +45,16 @@ export function Sidebar({
 }: {
   chats: ChatOut[]
   activeChatId: string | null
+  /** When true the sidebar is slid shut (width 0). */
+  collapsed: boolean
+  /** Toggle collapsed/expanded. */
+  onToggleCollapse: () => void
   onSelect: (id: string) => void
   onNewChat: () => void
   onToggleFavorite: (id: string) => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
 }) {
-  const { user } = useAuth()
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
@@ -80,91 +84,105 @@ export function Sidebar({
   )
 
   return (
-    <aside className={styles.sidebar}>
-      <div className={styles.logoBlock}>
-        <CapyLogo size={90} />
-        <div className={styles.logoText}>
-          <span className={styles.logoSub}>
-            С возвращением, {user?.displayName || user?.username || 'гость'}
+    <aside
+      className={collapsed ? `${styles.sidebar} ${styles.sidebarCollapsed}` : styles.sidebar}
+      aria-hidden={collapsed || undefined}
+    >
+      <div className={styles.sidebarInner}>
+        <button
+          type="button"
+          className={styles.collapseBtn}
+          onClick={onToggleCollapse}
+          aria-label="Свернуть панель"
+        >
+          <PanelLeft size={18} strokeWidth={1.8} />
+        </button>
+        <div className={styles.logoBlock}>
+          <div className={styles.logoMark}>
+            <CapyLogo size={30} />
+          </div>
+          <div className={styles.logoText}>
+            <span className={styles.logoTitle}>CapybaraAgent</span>
+            <span className={styles.logoSub}>локальный агент</span>
+          </div>
+        </div>
+
+        <button type="button" className={styles.newChatBtn} onClick={onNewChat}>
+          <span className={styles.newChatIcon}>
+            <Plus size={16} />
           </span>
+          Новый чат
+        </button>
+
+        <div className={styles.searchWrap}>
+          <span className={styles.searchIcon}>
+            <Search size={14} />
+          </span>
+          <input
+            type="search"
+            className={styles.searchInput}
+            placeholder="Поиск…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Поиск по чатам"
+          />
         </div>
-      </div>
 
-      <button type="button" className={styles.newChatBtn} onClick={onNewChat}>
-        <span className={styles.newChatIcon}>
-          <Plus size={16} />
-        </span>
-        Новый чат
-      </button>
-
-      <div className={styles.searchWrap}>
-        <span className={styles.searchIcon}>
-          <Search size={14} />
-        </span>
-        <input
-          type="search"
-          className={styles.searchInput}
-          placeholder="Поиск…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Поиск по чатам"
-        />
-      </div>
-
-      <div className={styles.chatList}>
-        {favorites.length > 0 && (
-          <div>
-            <div className={styles.groupLabel}>
-              <Star size={11} fill="currentColor" className={styles.groupStar} /> Избранное
+        <div className={styles.chatList}>
+          {favorites.length > 0 && (
+            <div>
+              <div className={styles.groupLabel}>
+                <Star size={11} fill="currentColor" className={styles.groupStar} /> Избранное
+              </div>
+              {favorites.map(renderItem)}
             </div>
-            {favorites.map(renderItem)}
+          )}
+          {dateGroups.map((group) => (
+            <div key={group.label}>
+              <div className={styles.groupLabel}>{group.label}</div>
+              {group.items.map(renderItem)}
+            </div>
+          ))}
+        </div>
+
+        <div className={styles.bottomBlock}>
+          <div aria-disabled="true" className={styles.navDisabled}>
+            <Brain size={16} />
+            Память
           </div>
+          <div aria-disabled="true" className={styles.navDisabled}>
+            <Clock size={16} />
+            Фоновые задачи
+            <span className={styles.badge}>2</span>
+          </div>
+          <div aria-disabled="true" className={styles.navDisabled}>
+            <Settings size={16} />
+            Настройки
+          </div>
+          <UserCard />
+        </div>
+
+        {menu && menuChat && (
+          <ChatContextMenu
+            x={menu.x}
+            y={menu.y}
+            isFavorite={menuChat.is_favorite}
+            onRename={() => {
+              setRenamingId(menu.id)
+              setMenu(null)
+            }}
+            onToggleFavorite={() => {
+              onToggleFavorite(menu.id)
+              setMenu(null)
+            }}
+            onDelete={() => {
+              onDelete(menu.id)
+              setMenu(null)
+            }}
+            onClose={() => setMenu(null)}
+          />
         )}
-        {dateGroups.map((group) => (
-          <div key={group.label}>
-            <div className={styles.groupLabel}>{group.label}</div>
-            {group.items.map(renderItem)}
-          </div>
-        ))}
       </div>
-
-      <div className={styles.bottomBlock}>
-        <div aria-disabled="true" className={styles.navDisabled}>
-          <Brain size={16} />
-          Память
-        </div>
-        <div aria-disabled="true" className={styles.navDisabled}>
-          <Clock size={16} />
-          Фоновые задачи
-          <span className={styles.badge}>2</span>
-        </div>
-        <div aria-disabled="true" className={styles.navDisabled}>
-          <Settings size={16} />
-          Настройки
-        </div>
-        <UserCard />
-      </div>
-
-      {menu && menuChat && (
-        <ChatContextMenu
-          x={menu.x}
-          y={menu.y}
-          isFavorite={menuChat.is_favorite}
-          onRename={() => {
-            setRenamingId(menu.id)
-            setMenu(null)
-          }}
-          onToggleFavorite={() => {
-            onToggleFavorite(menu.id)
-            setMenu(null)
-          }}
-          onDelete={() => {
-            onDelete(menu.id)
-            setMenu(null)
-          }}
-          onClose={() => setMenu(null)}
-        />
-      )}
     </aside>
   )
 }
