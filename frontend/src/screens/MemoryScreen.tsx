@@ -1,5 +1,14 @@
 /** Standalone «Память» screen: auto-capture toggle + fact-card grid with add/edit/delete. */
 import { useState } from 'react'
+
+/** Russian plural for "факт": 1 → факт, 2–4 → факта, else → фактов (with teens exception). */
+function pluralizeFacts(n: number): string {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  if (mod10 === 1 && mod100 !== 11) return 'факт'
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'факта'
+  return 'фактов'
+}
 import { Plus } from 'lucide-react'
 import { FactCard } from '../components/FactCard'
 import { FactForm } from '../components/FactForm'
@@ -29,7 +38,7 @@ export function MemoryScreen() {
           <div>
             <h2 className={styles.title}>Память</h2>
             <p className={styles.subtitle}>
-              Агент запомнил {facts.length} фактов о вас и вашей работе.
+              Агент запомнил {facts.length} {pluralizeFacts(facts.length)} о вас и вашей работе.
             </p>
           </div>
           <label className={styles.toggleLabel}>
@@ -37,7 +46,6 @@ export function MemoryScreen() {
             <input
               type="checkbox"
               className={styles.toggle}
-              aria-label="Авто-запоминание"
               checked={autoCapture}
               onChange={(e) => void toggleAutoCapture(e.target.checked)}
             />
@@ -67,6 +75,7 @@ export function MemoryScreen() {
         {adding ? (
           <div className={styles.addForm}>
             <FactForm
+              submitLabel="Добавить"
               onSubmit={(content, category) => void handleAdd(content, category)}
               onCancel={() => setAdding(false)}
             />

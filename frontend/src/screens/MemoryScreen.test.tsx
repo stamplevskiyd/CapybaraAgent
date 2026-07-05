@@ -38,7 +38,7 @@ test('renders facts and adds a new one', async () => {
 
   await userEvent.click(screen.getByRole('button', { name: /Добавить факт/ }))
   await userEvent.type(screen.getByLabelText('Текст факта'), 'Пьёт кофе по утрам')
-  await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Добавить' }))
 
   expect(await screen.findByText('Пьёт кофе по утрам')).toBeInTheDocument()
 })
