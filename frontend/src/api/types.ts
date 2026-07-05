@@ -34,3 +34,28 @@ export interface MessageOut {
 }
 
 export type ChatDetailOut = ChatOut & { messages: MessageOut[] }
+
+export type Category = 'personal' | 'project' | 'preference'
+
+export interface FactOut {
+  id: string
+  category: Category
+  content: string
+  source: 'manual' | 'auto'
+  created_at: string
+  updated_at: string
+}
+
+export interface FactCreate {
+  content: string
+  category: Category
+}
+
+export interface FactUpdate {
+  content?: string
+  category?: Category
+}
+
+export interface MemorySettings {
+  auto_capture: boolean
+}
