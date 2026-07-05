@@ -23,3 +23,26 @@ async def test_insert_and_read_graph(session: AsyncSession, make_user) -> None: 
     assert loaded.incomplete is False
     assert loaded.model is None
     assert isinstance(user.id, type(uuid4()))
+
+
+async def test_fact_model_persists_with_embedding(session: AsyncSession) -> None:
+    from capybara.db.models import Fact, User
+    from capybara.security.passwords import hash_password
+
+    user = User(username="factuser", display_name="F", password_hash=hash_password("password123"))
+    session.add(user)
+    await session.flush()
+
+    fact = Fact(
+        user_id=user.id,
+        category="personal",
+        content="Пьёт чай без сахара",
+        embedding=[0.1] * 768,
+        source="manual",
+    )
+    session.add(fact)
+    await session.flush()
+
+    assert fact.id is not None
+    assert fact.created_at is not None
+    assert user.memory_auto_capture is True

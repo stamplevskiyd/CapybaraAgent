@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 
 from capybara.agent.base import BaseAgent, ModelProviderError, ModelUnavailableError
 from capybara.api.dependencies import (
@@ -15,6 +16,7 @@ from capybara.api.dependencies import (
     get_chat_repo,
     get_chat_service,
     get_current_user,
+    get_memory_service,
     get_message_repo,
     get_owned_chat,
 )
@@ -32,6 +34,7 @@ from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatNotFoundError, ChatService, NoUserMessageError
 from capybara.services.events import Delta, Done
+from capybara.services.memory_service import MemoryService, schedule_extraction
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +149,7 @@ async def send_message(
     payload: MessageCreate,
     user: Annotated[User, Depends(get_current_user)],
     service: Annotated[ChatService, Depends(get_chat_service)],
+    memory: Annotated[MemoryService, Depends(get_memory_service)],
 ) -> StreamingResponse:
     """Accept a user message, stream the LLM reply via SSE, and persist both messages.
 
@@ -164,7 +168,9 @@ async def send_message(
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(chat_id, model, payload.content, history):
+            async for event in service.stream_turn(
+                chat_id, model, payload.content, history, user_id=user.id
+            ):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):
@@ -184,6 +190,7 @@ async def send_message(
         event_stream(),
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
+        background=BackgroundTask(schedule_extraction, memory, user.id, chat_id),
     )
 
 
@@ -214,7 +221,9 @@ async def regenerate_message(
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(chat_id, model, last_user_content, history):
+            async for event in service.stream_turn(
+                chat_id, model, last_user_content, history, user_id=user.id
+            ):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):

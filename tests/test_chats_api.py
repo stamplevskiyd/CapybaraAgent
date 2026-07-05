@@ -7,6 +7,7 @@ from capybara.api.dependencies import (
     get_current_user,
     get_session,
     get_sessionmaker,
+    get_settings_dep,
 )
 from capybara.config import Settings
 from capybara.db.engine import create_sessionmaker
@@ -43,6 +44,7 @@ async def client(engine, settings: Settings, make_user):  # type: ignore[no-unty
     app.dependency_overrides[get_session] = _override_session
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_sessionmaker] = lambda: maker
+    app.dependency_overrides[get_settings_dep] = lambda: settings
     app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "Ответ агента")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -161,9 +163,7 @@ async def test_send_message_stream_error_is_generic(
     assert "Internal server error" in body
 
 
-async def test_empty_agent_reply_still_emits_done(
-    client: AsyncClient, settings: Settings
-) -> None:
+async def test_empty_agent_reply_still_emits_done(client: AsyncClient, settings: Settings) -> None:
     """A successful but empty model reply must still terminate the SSE stream."""
     chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
     app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "")

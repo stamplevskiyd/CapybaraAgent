@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, Tool
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -27,6 +27,13 @@ TITLE_SYSTEM_PROMPT = (
 
 #: Maximum length of a generated/fallback title, matching ``chats.title``.
 _TITLE_MAX = 200
+
+#: System prompt for chat runs that carry tools — nudges the model to use recall.
+CHAT_SYSTEM_PROMPT = (
+    "You are a helpful assistant. Use the `recall` tool to search the user's "
+    "long-term memory whenever the question depends on personal details, "
+    "preferences, or context they may have shared earlier."
+)
 
 
 def _clean_title(raw: str, *, fallback: str) -> str:
@@ -89,6 +96,27 @@ class BaseAgent(ABC):
         """Build a pydantic-ai model for the given model name."""
         ...
 
+    @abstractmethod
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Return one embedding vector per input text."""
+        ...
+
+    async def run_structured[T](
+        self, model_name: str, system_prompt: str, user_content: str, output_type: type[T]
+    ) -> T:
+        """Run a one-shot agent that returns a validated structured result.
+
+        Generic over the output schema so callers own their own extraction types; the
+        agent layer stays domain-agnostic.
+        """
+        agent: Agent[None, T] = Agent(
+            self._build_model(model_name),
+            system_prompt=system_prompt,
+            output_type=output_type,
+        )
+        result = await agent.run(user_content)
+        return result.output
+
     async def ensure_available(self, model_name: str | None) -> None:
         """Raise ModelUnavailableError if model_name is unset or not in the live list.
 
@@ -121,9 +149,19 @@ class BaseAgent(ABC):
         user_content: str,
         history: list[ModelMessage],
         acc: ReplyAccumulator,
+        tools: Sequence[Tool[None]] = (),
     ) -> AsyncIterator[str]:
-        """Stream token deltas for the named model and accumulate the reply into acc."""
-        agent: Agent[None, str] = Agent(self._build_model(model_name))
+        """Stream token deltas for the named model and accumulate the reply into acc.
+
+        When *tools* are supplied the chat system prompt (with the recall nudge) is set;
+        with no tools the prompt is left empty so behaviour is unchanged.
+        """
+        tool_list = list(tools)
+        agent: Agent[None, str] = Agent(
+            self._build_model(model_name),
+            system_prompt=CHAT_SYSTEM_PROMPT if tool_list else (),
+            tools=tool_list,
+        )
         async with agent.run_stream(user_content, message_history=history) as result:
             async for text in result.stream_text(delta=True):
                 acc.text += text

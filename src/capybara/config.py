@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     jwt_ttl_minutes: int = 43200
     jwt_algorithm: str = "HS256"
 
+    embedding_model: str = "nomic-embed-text"
+    memory_recall_k: int = 5
+    memory_recall_min_similarity: float = 0.3
+    memory_dedup_threshold: float = 0.9
+
     model_config = SettingsConfigDict(env_file=(".env.defaults", ".env"), extra="ignore")
 
     @property

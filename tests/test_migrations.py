@@ -64,3 +64,48 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
         )
         assert "ix_chats_user_id_updated_at" in indexes
         assert "ix_messages_chat_id_seq" in indexes
+
+        assert "facts" in set(tables)
+
+        fact_cols = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'facts'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {"embedding", "category", "source", "user_id"} <= set(fact_cols)
+
+        user_cols = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'users'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "memory_auto_capture" in set(user_cols)
+
+        fact_indexes = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT indexname FROM pg_indexes "
+                        "WHERE schemaname = 'public' AND tablename = 'facts'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "ix_facts_embedding_hnsw" in fact_indexes
+        assert "ix_facts_user_id_created_at" in fact_indexes
