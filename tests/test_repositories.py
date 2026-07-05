@@ -187,7 +187,6 @@ async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
 
 
 async def test_fact_repo_search_returns_nearest_first(session: AsyncSession) -> None:
-    from capybara.db.models import Fact
     from capybara.repositories.fact_repo import FactRepo
 
     user = await _seed_user(session)
@@ -196,9 +195,15 @@ async def test_fact_repo_search_returns_nearest_first(session: AsyncSession) -> 
     near = [1.0] + [0.0] * 767
     mid = [0.6, 0.8] + [0.0] * 766
     far = [0.0, 1.0] + [0.0] * 766
-    await repo.create(user_id=user.id, category="personal", content="near", embedding=near, source="manual")
-    await repo.create(user_id=user.id, category="personal", content="mid", embedding=mid, source="manual")
-    await repo.create(user_id=user.id, category="personal", content="far", embedding=far, source="manual")
+    await repo.create(
+        user_id=user.id, category="personal", content="near", embedding=near, source="manual"
+    )
+    await repo.create(
+        user_id=user.id, category="personal", content="mid", embedding=mid, source="manual"
+    )
+    await repo.create(
+        user_id=user.id, category="personal", content="far", embedding=far, source="manual"
+    )
 
     results = await repo.search(user.id, near, k=3)
     assert [fact.content for fact, _distance in results] == ["near", "mid", "far"]
@@ -206,7 +211,7 @@ async def test_fact_repo_search_returns_nearest_first(session: AsyncSession) -> 
 
 
 async def test_fact_repo_search_is_user_scoped(session: AsyncSession) -> None:
-    from capybara.db.models import Fact, User
+    from capybara.db.models import User
     from capybara.repositories.fact_repo import FactRepo
     from capybara.security.passwords import hash_password
 
@@ -217,7 +222,9 @@ async def test_fact_repo_search_is_user_scoped(session: AsyncSession) -> None:
 
     vec = [1.0] + [0.0] * 767
     repo = FactRepo(session)
-    await repo.create(user_id=user_b.id, category="personal", content="b-secret", embedding=vec, source="manual")
+    await repo.create(
+        user_id=user_b.id, category="personal", content="b-secret", embedding=vec, source="manual"
+    )
 
     results = await repo.search(user_a.id, vec, k=5)
     assert results == []
