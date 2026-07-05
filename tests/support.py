@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 
+from pydantic_ai import Agent
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
@@ -125,8 +126,6 @@ class StubMemoryAgent(FakeAgent):
         self, model_name: str, system_prompt: str, user_content: str, output_type: type[T]
     ) -> T:
         """Return canned structured extraction output via a dedicated TestModel."""
-        from pydantic_ai import Agent
-
         model = TestModel(custom_output_args=self._extracted, call_tools=[])
         agent: Agent[None, T] = Agent(model, system_prompt=system_prompt, output_type=output_type)
         result = await agent.run(user_content)

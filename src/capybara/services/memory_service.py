@@ -118,8 +118,9 @@ class MemoryService:
             if content is not None and content != fact.content:
                 fields["content"] = content
                 [fields["embedding"]] = await self._agent.embed([content])
-            if fields:
-                fact = await repo.update(fact, **fields)
+            if not fields:
+                return fact
+            fact = await repo.update(fact, **fields)
             await session.commit()
             await session.refresh(fact)
             return fact
@@ -168,6 +169,7 @@ class MemoryService:
         embedding-similarity dedup (facts within ``memory_dedup_threshold`` of an existing
         fact are skipped). Safe to run in a post-response background task.
         """
+        # Best-effort per turn: post-response run; incomplete=False filter and dedup keep this safe.
         async with self._sessionmaker() as session:
             user = await session.get(User, user_id)
             if user is None or not user.memory_auto_capture:

@@ -16,7 +16,7 @@ FACT_CATEGORIES: tuple[str, ...] = ("personal", "project", "preference")
 #: How a fact was created: user-entered vs auto-captured from a conversation.
 FACT_SOURCES: tuple[str, ...] = ("manual", "auto")
 #: Embedding dimensionality — matches Ollama ``nomic-embed-text``.
-EMBEDDING_DIM = 768
+EMBEDDING_DIM: int = 768
 
 _CATEGORY_CHECK = ", ".join(f"'{c}'" for c in FACT_CATEGORIES)
 _SOURCE_CHECK = ", ".join(f"'{s}'" for s in FACT_SOURCES)

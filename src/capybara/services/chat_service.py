@@ -101,6 +101,10 @@ class ChatService:
         No DB connection is held while the model streams. When *user_id* is given and a
         memory service is wired, the recall tool is added to the run's tool list so the
         model can search long-term memory mid-turn.
+
+        If the stream fails after some tokens, the partial text is persisted with
+        ``incomplete=True`` before the error propagates. If it fails before the first
+        token, nothing is written, so a failed turn never leaves a blank assistant message.
         """
         tools: list[Tool[None]] = []
         if user_id is not None and self._memory_service is not None:

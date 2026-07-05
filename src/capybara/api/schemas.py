@@ -1,4 +1,4 @@
-"""Pydantic request/response schemas for the chat, user, and auth APIs."""
+"""Pydantic request/response schemas for the chat, memory, user, and auth APIs."""
 
 from datetime import datetime
 from typing import Literal

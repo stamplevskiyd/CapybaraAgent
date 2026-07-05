@@ -5,4 +5,4 @@ from capybara.db.models.fact import Fact
 from capybara.db.models.message import Message
 from capybara.db.models.user import User
 
-__all__ = ["User", "Chat", "Message", "Fact"]
+__all__ = ["Chat", "Fact", "Message", "User"]
