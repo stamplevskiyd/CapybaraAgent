@@ -18,7 +18,7 @@ from capybara.security.passwords import hash_password
 
 @pytest.fixture(scope="session")
 def postgres_container() -> Iterator[PostgresContainer]:
-    with PostgresContainer("postgres:16", driver="asyncpg") as pg:
+    with PostgresContainer("pgvector/pgvector:pg16", driver="asyncpg") as pg:
         yield pg
 
 
@@ -42,6 +42,7 @@ def settings(postgres_container: PostgresContainer) -> Settings:
 async def engine(settings: Settings) -> AsyncIterator[AsyncEngine]:
     eng = create_engine(settings)
     async with eng.begin() as conn:
+        await conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     yield eng
     async with eng.begin() as conn:
