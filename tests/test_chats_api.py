@@ -1,3 +1,5 @@
+import json
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -13,7 +15,7 @@ from capybara.config import Settings
 from capybara.db.engine import create_sessionmaker
 from capybara.db.models import Chat, User
 from capybara.main import app
-from support import FakeAgent, PartialThenFailAgent, RaisingAgent  # noqa: F401
+from support import EmptyReplyAgent, FakeAgent, PartialThenFailAgent, RaisingAgent  # noqa: F401
 
 
 @pytest_asyncio.fixture
@@ -90,7 +92,18 @@ async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> Non
             body += chunk
     assert "event: delta" in body
     assert "event: done" in body
-    assert "Ответ агента" in body
+    # agent.iter() streams token-by-token; reconstruct the full reply from delta frames.
+    delta_text = ""
+    for frame in body.split("\n\n"):
+        if not frame.strip():
+            continue
+        lines = frame.strip().splitlines()
+        if any(line == "event: delta" for line in lines):
+            for line in lines:
+                if line.startswith("data:"):
+                    payload = json.loads(line[5:].strip())
+                    delta_text += payload.get("text", "")
+    assert delta_text == "Ответ агента"
 
     fetched = await client.get(f"/chats/{chat_id}")
     roles = [m["role"] for m in fetched.json()["messages"]]
@@ -166,7 +179,11 @@ async def test_send_message_stream_error_is_generic(
 async def test_empty_agent_reply_still_emits_done(client: AsyncClient, settings: Settings) -> None:
     """A successful but empty model reply must still terminate the SSE stream."""
     chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
-    app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "")
+    # EmptyReplyAgent is used instead of FakeAgent(settings, "") because TestModel("")
+    # raises UnexpectedModelBehavior under agent.iter() (no output → retry exhausted).
+    # EmptyReplyAgent yields zero events and returns normally, faithfully simulating
+    # a successful-but-empty reply without touching production error handling.
+    app.dependency_overrides[get_agent] = lambda: EmptyReplyAgent(settings, "")
 
     async with client.stream(
         "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}

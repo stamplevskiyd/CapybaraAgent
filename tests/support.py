@@ -139,6 +139,30 @@ class ToolCallingFakeAgent(FakeAgent):
         return TestModel(custom_output_text=self._output_text)  # call_tools defaults to "all"
 
 
+class EmptyReplyAgent(FakeAgent):
+    """Faithfully simulate a successful but empty model reply.
+
+    ``TestModel("")`` cannot represent an empty-successful reply under ``agent.iter()``:
+    it produces no output and the agent graph raises ``UnexpectedModelBehavior``.
+    This fake overrides ``stream_reply`` to yield zero events and return normally,
+    leaving ``acc.text == ""`` and setting ``acc.model = "test"`` so
+    ``ChatService.stream_turn`` completes and emits ``Done(message_id=None)``.
+    """
+
+    async def stream_reply(
+        self,
+        model_name: str,
+        user_content: str,
+        history: list[ModelMessage],
+        acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
+    ) -> AsyncIterator[StreamedText]:
+        """Yield zero events; return normally to model a successful empty reply."""
+        acc.model = "test"
+        return
+        yield StreamedText(text="")  # pragma: no cover
+
+
 class ScriptedToolAgent(FakeAgent):
     """Agent whose stream yields a fixed tool-call → tool-result → text sequence.
 
