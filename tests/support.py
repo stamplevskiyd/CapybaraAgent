@@ -94,6 +94,11 @@ class StubMemoryAgent(FakeAgent):
     ``embeddings`` maps input text → vector (unknown texts get a fixed non-zero vector so
     cosine distance is always defined). ``extracted`` is the dict fed to the extraction
     output tool, e.g. ``{"facts": [{"content": "...", "category": "personal"}]}``.
+
+    Implementation note: ``_build_model`` always returns a text-output TestModel so
+    ``stream_reply`` and ``generate_title`` work correctly.  ``run_structured`` is
+    overridden to build a separate TestModel configured with ``custom_output_args`` so
+    extraction returns the canned facts without interfering with the stream path.
     """
 
     def __init__(  # type: ignore[no-untyped-def]
@@ -113,14 +118,19 @@ class StubMemoryAgent(FakeAgent):
         return [self._embeddings.get(t, [0.0] * 767 + [1.0]) for t in texts]
 
     def _build_model(self, name: str) -> Model:
-        # When structured extraction args are provided, TestModel rejects a simultaneous
-        # custom_output_text (pydantic-ai asserts output_mode != 'tool'). Switch modes.
-        has_extracted = bool(self._extracted.get("facts"))
-        return TestModel(
-            custom_output_text=None if has_extracted else self._output_text,
-            custom_output_args=self._extracted if has_extracted else None,
-            call_tools=[],
-        )
+        # Always return a text-output model; run_structured uses its own model instance.
+        return TestModel(custom_output_text=self._output_text, call_tools=[])
+
+    async def run_structured[T](  # type: ignore[override]
+        self, model_name: str, system_prompt: str, user_content: str, output_type: type[T]
+    ) -> T:
+        """Return canned structured extraction output via a dedicated TestModel."""
+        from pydantic_ai import Agent
+
+        model = TestModel(custom_output_args=self._extracted, call_tools=[])
+        agent: Agent[None, T] = Agent(model, system_prompt=system_prompt, output_type=output_type)
+        result = await agent.run(user_content)
+        return result.output
 
 
 class ToolCallingFakeAgent(FakeAgent):
