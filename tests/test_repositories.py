@@ -184,3 +184,40 @@ async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
     result = await msgs.list(FieldEquals(Message.chat_id, chat1.id))
     assert len(result) == 1
     assert result[0].content == "in chat1"
+
+
+async def test_fact_repo_search_returns_nearest_first(session: AsyncSession) -> None:
+    from capybara.db.models import Fact
+    from capybara.repositories.fact_repo import FactRepo
+
+    user = await _seed_user(session)
+    repo = FactRepo(session)
+    # Three orthogonal-ish unit vectors in 768-space.
+    near = [1.0] + [0.0] * 767
+    mid = [0.6, 0.8] + [0.0] * 766
+    far = [0.0, 1.0] + [0.0] * 766
+    await repo.create(user_id=user.id, category="personal", content="near", embedding=near, source="manual")
+    await repo.create(user_id=user.id, category="personal", content="mid", embedding=mid, source="manual")
+    await repo.create(user_id=user.id, category="personal", content="far", embedding=far, source="manual")
+
+    results = await repo.search(user.id, near, k=3)
+    assert [fact.content for fact, _distance in results] == ["near", "mid", "far"]
+    assert results[0][1] < results[-1][1]  # nearest has the smallest distance
+
+
+async def test_fact_repo_search_is_user_scoped(session: AsyncSession) -> None:
+    from capybara.db.models import Fact, User
+    from capybara.repositories.fact_repo import FactRepo
+    from capybara.security.passwords import hash_password
+
+    user_a = await _seed_user(session)
+    user_b = User(username="userb", display_name="B", password_hash=hash_password("password123"))
+    session.add(user_b)
+    await session.flush()
+
+    vec = [1.0] + [0.0] * 767
+    repo = FactRepo(session)
+    await repo.create(user_id=user_b.id, category="personal", content="b-secret", embedding=vec, source="manual")
+
+    results = await repo.search(user_a.id, vec, k=5)
+    assert results == []
