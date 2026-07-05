@@ -433,3 +433,27 @@
   background: rgba(255, 255, 255, 0.08);
   margin: 4px 6px;
 }
+
+.navButton {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #c9c0b6;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.navButton:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.navButtonActive,
+.navButtonActive:hover {
+  background: rgba(216, 155, 108, 0.13);
+  border-color: rgba(216, 155, 108, 0.28);
+  color: #f0e6db;
+}

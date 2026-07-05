@@ -42,6 +42,8 @@ export function Sidebar({
   onToggleFavorite,
   onRename,
   onDelete,
+  onOpenMemory,
+  memoryActive,
 }: {
   chats: ChatOut[]
   activeChatId: string | null
@@ -54,6 +56,10 @@ export function Sidebar({
   onToggleFavorite: (id: string) => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
+  /** Open the standalone «Память» screen. */
+  onOpenMemory: () => void
+  /** True when the «Память» screen is the active view (highlights the nav item). */
+  memoryActive: boolean
 }) {
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -146,10 +152,14 @@ export function Sidebar({
         </div>
 
         <div className={styles.bottomBlock}>
-          <div aria-disabled="true" className={styles.navDisabled}>
+          <button
+            type="button"
+            className={memoryActive ? `${styles.navButton} ${styles.navButtonActive}` : styles.navButton}
+            onClick={onOpenMemory}
+          >
             <Brain size={16} />
             Память
-          </div>
+          </button>
           <div aria-disabled="true" className={styles.navDisabled}>
             <Clock size={16} />
             Фоновые задачи

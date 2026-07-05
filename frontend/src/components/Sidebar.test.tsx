@@ -6,7 +6,7 @@ beforeEach(() =>
   localStorage.setItem('capybara.session', JSON.stringify({ token: 't', username: 'roman' })),
 )
 
-test('deferred nav items are disabled', () => {
+test('deferred nav items are disabled; Память is an enabled button', () => {
   render(
     <AuthProvider>
       <Sidebar
@@ -19,12 +19,17 @@ test('deferred nav items are disabled', () => {
         onToggleFavorite={() => {}}
         onRename={() => {}}
         onDelete={() => {}}
+        onOpenMemory={() => {}}
+        memoryActive={false}
       />
     </AuthProvider>,
   )
-  for (const label of ['Память', 'Фоновые задачи', 'Настройки']) {
+  // «Фоновые задачи» and «Настройки» remain disabled placeholders.
+  for (const label of ['Фоновые задачи', 'Настройки']) {
     expect(screen.getByText(label).closest('[aria-disabled="true"]')).not.toBeNull()
   }
+  // «Память» is now an enabled button.
+  expect(screen.getByRole('button', { name: 'Память' })).toBeInTheDocument()
 })
 
 test('favorites appear under an Избранное group above date groups', () => {
@@ -45,6 +50,8 @@ test('favorites appear under an Избранное group above date groups', () 
         onToggleFavorite={() => {}}
         onRename={() => {}}
         onDelete={() => {}}
+        onOpenMemory={() => {}}
+        memoryActive={false}
       />
     </AuthProvider>,
   )

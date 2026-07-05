@@ -6,6 +6,7 @@ import { CapyLogo } from '../components/CapyLogo'
 import { Composer } from '../components/Composer'
 import { Thread } from '../components/Thread'
 import { Sidebar } from '../components/Sidebar'
+import { MemoryScreen } from './MemoryScreen'
 import { useAuth, useApiClient } from '../auth/AuthContext'
 import { useChats } from '../chat/useChats'
 import { useModels } from '../chat/useModels'
@@ -36,6 +37,7 @@ export function ChatScreen() {
   const api = useApiClient()
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [draftModel, setDraftModel] = useState<string | null>(() => loadLastModel())
+  const [view, setView] = useState<'chat' | 'memory'>('chat')
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('capybara.sidebarCollapsed') === '1'
@@ -179,11 +181,19 @@ export function ChatScreen() {
           activeChatId={activeChatId}
           collapsed={sidebarCollapsed}
           onToggleCollapse={toggleSidebar}
-          onSelect={setActiveChatId}
-          onNewChat={() => setActiveChatId(null)}
+          onSelect={(id) => {
+            setActiveChatId(id)
+            setView('chat')
+          }}
+          onNewChat={() => {
+            setActiveChatId(null)
+            setView('chat')
+          }}
           onToggleFavorite={handleToggleFavorite}
           onRename={handleRename}
           onDelete={handleDelete}
+          onOpenMemory={() => setView('memory')}
+          memoryActive={view === 'memory'}
         />
         <main className={styles.main}>
           {sidebarCollapsed && (
@@ -196,7 +206,9 @@ export function ChatScreen() {
               <PanelLeft size={18} strokeWidth={1.8} />
             </button>
           )}
-          {activeChatId === null ? (
+          {view === 'memory' ? (
+            <MemoryScreen />
+          ) : activeChatId === null ? (
             <div className={styles.welcome}>
               <div className={styles.welcomeContent}>
                 <CapyLogo size={64} />
