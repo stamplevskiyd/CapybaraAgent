@@ -33,7 +33,7 @@ from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatNotFoundError, ChatService, NoUserMessageError
-from capybara.services.events import Delta, Done
+from capybara.services.events import Delta, Done, ToolCall, ToolResult
 from capybara.services.memory_service import MemoryService, schedule_extraction
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,12 @@ async def send_message(
             ):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
+                elif isinstance(event, ToolCall):
+                    yield _sse(
+                        "tool-call", {"id": event.id, "name": event.name, "args": event.args}
+                    )
+                elif isinstance(event, ToolResult):
+                    yield _sse("tool-result", {"id": event.id, "result": event.result})
                 elif isinstance(event, Done):
                     yield _sse(
                         "done",
@@ -226,6 +232,12 @@ async def regenerate_message(
             ):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
+                elif isinstance(event, ToolCall):
+                    yield _sse(
+                        "tool-call", {"id": event.id, "name": event.name, "args": event.args}
+                    )
+                elif isinstance(event, ToolResult):
+                    yield _sse("tool-result", {"id": event.id, "result": event.result})
                 elif isinstance(event, Done):
                     yield _sse(
                         "done",

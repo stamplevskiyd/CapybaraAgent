@@ -15,7 +15,13 @@ from capybara.config import Settings
 from capybara.db.engine import create_sessionmaker
 from capybara.db.models import Chat, User
 from capybara.main import app
-from support import EmptyReplyAgent, FakeAgent, PartialThenFailAgent, RaisingAgent  # noqa: F401
+from support import (
+    EmptyReplyAgent,
+    FakeAgent,
+    PartialThenFailAgent,  # noqa: F401
+    RaisingAgent,
+    ScriptedToolAgent,
+)
 
 
 @pytest_asyncio.fixture
@@ -527,3 +533,25 @@ async def test_first_message_emits_title_event(client: AsyncClient) -> None:
     async with client.stream("POST", f"/chats/{chat_id}/messages", json={"content": "Ещё"}) as r:
         second = "".join([c async for c in r.aiter_text()])
     assert "title" not in _sse_events(second)
+
+
+async def test_send_message_streams_tool_call_frames(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """tool-call and tool-result SSE frames are emitted when the agent calls a tool."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    app.dependency_overrides[get_agent] = lambda: ScriptedToolAgent(settings, "Ответ")
+    try:
+        async with client.stream(
+            "POST", f"/chats/{chat_id}/messages", json={"content": "Что?"}
+        ) as resp:
+            body = ""
+            async for chunk in resp.aiter_text():
+                body += chunk
+    finally:
+        app.dependency_overrides.clear()
+
+    assert "event: tool-call" in body
+    assert "event: tool-result" in body
+    assert '"name": "recall"' in body
+    assert "event: delta" in body
