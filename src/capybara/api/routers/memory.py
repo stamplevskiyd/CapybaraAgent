@@ -1,9 +1,10 @@
 """Router for memory (facts) CRUD and settings."""
 
-from typing import Annotated
+from typing import Annotated, NoReturn
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from capybara.agent.base import EmbeddingModelUnavailableError, ModelProviderError
 from capybara.api.dependencies import get_current_user, get_memory_service, get_owned_fact
 from capybara.api.schemas import (
     FactCreate,
@@ -16,6 +17,19 @@ from capybara.db.models import Fact, User
 from capybara.services.memory_service import MemoryService
 
 router = APIRouter(prefix="/memory", tags=["memory"])
+
+
+def _raise_for_embed_error(exc: EmbeddingModelUnavailableError | ModelProviderError) -> NoReturn:
+    """Translate an embedding failure into an actionable HTTP error.
+
+    A missing embedding model is a fixable configuration issue (503 + how to fix); a
+    provider that cannot be reached is an upstream outage (502).
+    """
+    if isinstance(exc, EmbeddingModelUnavailableError):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @router.get("/facts", response_model=list[FactOut])
@@ -35,7 +49,10 @@ async def create_fact(
     service: Annotated[MemoryService, Depends(get_memory_service)],
 ) -> FactOut:
     """Embed and store a new manual fact for the current user."""
-    fact = await service.add_fact(user.id, payload.content, payload.category)
+    try:
+        fact = await service.add_fact(user.id, payload.content, payload.category)
+    except (EmbeddingModelUnavailableError, ModelProviderError) as exc:
+        _raise_for_embed_error(exc)
     return FactOut.model_validate(fact)
 
 
@@ -47,9 +64,12 @@ async def update_fact(
     service: Annotated[MemoryService, Depends(get_memory_service)],
 ) -> FactOut:
     """Update a fact's content and/or category (404 if not owned); re-embeds on content change."""
-    updated = await service.update_fact(
-        user.id, fact.id, content=payload.content, category=payload.category
-    )
+    try:
+        updated = await service.update_fact(
+            user.id, fact.id, content=payload.content, category=payload.category
+        )
+    except (EmbeddingModelUnavailableError, ModelProviderError) as exc:
+        _raise_for_embed_error(exc)
     assert updated is not None  # get_owned_fact already verified ownership
     return FactOut.model_validate(updated)
 

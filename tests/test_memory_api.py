@@ -50,6 +50,58 @@ async def client(engine: AsyncEngine, settings: Settings, make_user):  # type: i
     app.dependency_overrides.clear()
 
 
+async def test_create_fact_returns_503_when_embedding_model_missing(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """A missing embedding model surfaces an actionable 503, not a generic 500."""
+    from capybara.agent.base import EmbeddingModelUnavailableError
+
+    class NoEmbedAgent(StubMemoryAgent):
+        async def embed(self, texts):  # type: ignore[no-untyped-def]
+            raise EmbeddingModelUnavailableError(settings.embedding_model)
+
+    app.dependency_overrides[get_agent] = lambda: NoEmbedAgent(settings)
+    resp = await client.post(
+        "/memory/facts", json={"content": "Любит чай", "category": "preference"}
+    )
+    assert resp.status_code == 503
+    assert "ollama pull" in resp.json()["detail"].lower()
+
+
+async def test_create_fact_returns_502_when_ollama_unreachable(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """A genuine provider outage surfaces a 502, distinct from the fixable-config 503."""
+    from capybara.agent.base import ModelProviderError
+
+    class DownAgent(StubMemoryAgent):
+        async def embed(self, texts):  # type: ignore[no-untyped-def]
+            raise ModelProviderError(settings.ollama_base_url)
+
+    app.dependency_overrides[get_agent] = lambda: DownAgent(settings)
+    resp = await client.post("/memory/facts", json={"content": "Любит чай", "category": "personal"})
+    assert resp.status_code == 502
+
+
+async def test_update_fact_returns_503_when_embedding_model_missing(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """The re-embed on a content update also surfaces the actionable 503, not a 500."""
+    from capybara.agent.base import EmbeddingModelUnavailableError
+
+    created = await client.post("/memory/facts", json={"content": "старый", "category": "personal"})
+    fact_id = created.json()["id"]
+
+    class NoEmbedAgent(StubMemoryAgent):
+        async def embed(self, texts):  # type: ignore[no-untyped-def]
+            raise EmbeddingModelUnavailableError(settings.embedding_model)
+
+    app.dependency_overrides[get_agent] = lambda: NoEmbedAgent(settings)
+    resp = await client.patch(f"/memory/facts/{fact_id}", json={"content": "новый"})
+    assert resp.status_code == 503
+    assert "ollama pull" in resp.json()["detail"].lower()
+
+
 async def test_fact_crud_flow(client: AsyncClient) -> None:
     created = await client.post(
         "/memory/facts", json={"content": "Любит чай", "category": "preference"}

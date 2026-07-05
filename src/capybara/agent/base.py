@@ -70,6 +70,22 @@ class ModelProviderError(Exception):
         super().__init__(f"Ollama unreachable at {url}")
 
 
+class EmbeddingModelUnavailableError(Exception):
+    """Raised when the provider is reachable but the embedding model is not installed.
+
+    Distinct from ModelProviderError (server down): here Ollama answered with a
+    model-not-found response, so the actionable fix is to pull the model.
+    """
+
+    def __init__(self, model_name: str) -> None:
+        """Record the missing embedding model and how to install it."""
+        self.model_name = model_name
+        super().__init__(
+            f"Embedding model {model_name!r} is not available in Ollama. "
+            f"Pull it first: `ollama pull {model_name}`."
+        )
+
+
 @dataclass
 class ReplyAccumulator:
     """Accumulate streaming text, usage stats, and model name from a single run."""
