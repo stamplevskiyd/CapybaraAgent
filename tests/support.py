@@ -113,9 +113,12 @@ class StubMemoryAgent(FakeAgent):
         return [self._embeddings.get(t, [0.0] * 767 + [1.0]) for t in texts]
 
     def _build_model(self, name: str) -> Model:
+        # When structured extraction args are provided, TestModel rejects a simultaneous
+        # custom_output_text (pydantic-ai asserts output_mode != 'tool'). Switch modes.
+        has_extracted = bool(self._extracted.get("facts"))
         return TestModel(
-            custom_output_text=self._output_text,
-            custom_output_args=self._extracted,
+            custom_output_text=None if has_extracted else self._output_text,
+            custom_output_args=self._extracted if has_extracted else None,
             call_tools=[],
         )
 

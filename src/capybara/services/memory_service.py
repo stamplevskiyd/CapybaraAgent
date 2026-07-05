@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent.base import BaseAgent
 from capybara.config import Settings
-from capybara.db.models import Fact, User
+from capybara.db.models import Fact, Message, User
 from capybara.filters import FieldEquals
+from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.fact_repo import FactRepo
+from capybara.repositories.message_repo import MessageRepo
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,23 @@ EXTRACTION_SYSTEM_PROMPT = (
     "Categorise each as 'personal', 'project', or 'preference'. Ignore transient chatter, "
     "questions, and general knowledge. Return an empty list if there is nothing worth storing."
 )
+
+
+def _last_turn_text(messages: list[Message]) -> str | None:
+    r"""Format the last user+assistant exchange as ``User: …\nAssistant: …``.
+
+    Returns ``None`` when there is no completed assistant reply with a preceding user
+    message — nothing to extract from.
+    """
+    last_assistant = next((m for m in reversed(messages) if m.role == "assistant"), None)
+    if last_assistant is None:
+        return None
+    last_user = next(
+        (m for m in reversed(messages) if m.role == "user" and m.seq < last_assistant.seq), None
+    )
+    if last_user is None:
+        return None
+    return f"User: {last_user.content}\nAssistant: {last_assistant.content}"
 
 
 class MemoryService:
@@ -141,3 +160,57 @@ class MemoryService:
             user.memory_auto_capture = value
             await session.commit()
             return value
+
+    async def extract_and_store(self, user_id: UUID, chat_id: UUID) -> None:
+        """Extract durable facts from a chat's last turn and store the novel ones.
+
+        Gated by the user's auto-capture flag. Uses the chat's own model for extraction and
+        embedding-similarity dedup (facts within ``memory_dedup_threshold`` of an existing
+        fact are skipped). Safe to run in a post-response background task.
+        """
+        async with self._sessionmaker() as session:
+            user = await session.get(User, user_id)
+            if user is None or not user.memory_auto_capture:
+                return
+            chat = await ChatRepo(session).get(chat_id)
+            if chat is None or chat.model is None:
+                return
+            model = chat.model
+            messages = await MessageRepo(session).list(
+                FieldEquals(Message.chat_id, chat_id),
+                FieldEquals(Message.incomplete, False),
+            )
+        turn = _last_turn_text(messages)
+        if turn is None:
+            return
+
+        extracted = await self._agent.run_structured(
+            model, EXTRACTION_SYSTEM_PROMPT, turn, ExtractedFacts
+        )
+        for candidate in extracted.facts:
+            [embedding] = await self._agent.embed([candidate.content])
+            async with self._sessionmaker() as session:
+                repo = FactRepo(session)
+                nearest = await repo.search(user_id, embedding, 1)
+                if nearest and (1.0 - nearest[0][1]) >= self._settings.memory_dedup_threshold:
+                    continue
+                await repo.create(
+                    user_id=user_id,
+                    content=candidate.content,
+                    category=candidate.category,
+                    embedding=embedding,
+                    source="auto",
+                )
+                await session.commit()
+
+
+async def schedule_extraction(service: MemoryService, user_id: UUID, chat_id: UUID) -> None:
+    """Run auto-capture as a background task, swallowing and logging every error.
+
+    Variant A stand-in for a real task queue: the endpoint attaches this via Starlette's
+    ``BackgroundTask``. When the Celery slice lands, only the trigger changes.
+    """
+    try:
+        await service.extract_and_store(user_id, chat_id)
+    except Exception:
+        logger.exception("auto-capture failed for chat %s", chat_id)
