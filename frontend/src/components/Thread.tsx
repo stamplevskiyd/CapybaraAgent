@@ -10,6 +10,7 @@ import { ThreadPrimitive, MessagePrimitive, ActionBarPrimitive } from '@assistan
 import { ArrowDown, Copy, RefreshCw } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { MarkdownText } from './MessageMarkdown'
+import { ToolCallCard } from './ToolCallCard'
 import styles from './Thread.module.css'
 
 /**
@@ -58,7 +59,9 @@ function AssistantMessage() {
         <CapyLogo size={20} />
       </div>
       <div className={styles.assistantContent}>
-        <MessagePrimitive.Content components={{ Text: MarkdownText }} />
+        <MessagePrimitive.Content
+          components={{ Text: MarkdownText, tools: { Fallback: ToolCallCard } }}
+        />
         <MessagePrimitive.If last hasContent={false}>
           <TypingIndicator />
         </MessagePrimitive.If>
