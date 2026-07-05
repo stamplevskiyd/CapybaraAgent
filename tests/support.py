@@ -22,7 +22,10 @@ class FakeAgent(BaseAgent):
         return list(self._models)
 
     def _build_model(self, name: str) -> Model:
-        return TestModel(custom_output_text=self._output_text)
+        return TestModel(custom_output_text=self._output_text, call_tools=[])
+
+    async def embed(self, texts):  # type: ignore[no-untyped-def]
+        return [[0.1] * 768 for _ in texts]
 
 
 class RaisingAgent(BaseAgent):
@@ -38,12 +41,16 @@ class RaisingAgent(BaseAgent):
     def _build_model(self, name: str) -> Model:
         return TestModel()
 
+    async def embed(self, texts):  # type: ignore[no-untyped-def]
+        return [[0.1] * 768 for _ in texts]
+
     async def stream_reply(
         self,
         model_name: str,
         user_content: str,
         history: list[ModelMessage],
         acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
     ) -> AsyncIterator[str]:
         """Raise immediately; the trailing yield only marks this as a generator."""
         raise RuntimeError(self._message)
@@ -64,12 +71,16 @@ class PartialThenFailAgent(BaseAgent):
     def _build_model(self, name: str) -> Model:
         return TestModel()
 
+    async def embed(self, texts):  # type: ignore[no-untyped-def]
+        return [[0.1] * 768 for _ in texts]
+
     async def stream_reply(
         self,
         model_name: str,
         user_content: str,
         history: list[ModelMessage],
         acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
     ) -> AsyncIterator[str]:
         """Yield one accumulated delta, then raise to abort the stream."""
         acc.text += self._partial

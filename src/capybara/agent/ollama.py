@@ -1,5 +1,7 @@
 """Ollama-backed agent using the OpenAI-compatible API and the native tags endpoint."""
 
+from collections.abc import Sequence
+
 import httpx
 from pydantic_ai.models import Model
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -42,3 +44,20 @@ class OllamaAgent(BaseAgent):
                 api_key="ollama",  # Ollama ignores the key; required by the client.
             ),
         )
+
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Return embeddings for *texts* via Ollama's native ``/api/embed`` endpoint.
+
+        Raises:
+            ModelProviderError: If Ollama cannot be reached or returns an unexpected shape.
+        """
+        url = f"{self._settings.ollama_base_url}/api/embed"
+        payload = {"model": self._settings.embedding_model, "input": list(texts)}
+        try:
+            async with self._client_factory() as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+            data = response.json()
+            return [list(vector) for vector in data["embeddings"]]
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            raise ModelProviderError(self._settings.ollama_base_url) from exc
