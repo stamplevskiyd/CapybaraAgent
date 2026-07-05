@@ -4,6 +4,7 @@ import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+from pydantic_ai import Tool
 from pydantic_ai.messages import ModelMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -14,6 +15,8 @@ from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.events import Delta, Done, StreamEvent
+from capybara.services.memory_service import MemoryService
+from capybara.services.memory_tools import make_recall_tool
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +42,15 @@ class NoUserMessageError(Exception):
 class ChatService:
     """Orchestrate a conversation turn: persist user/assistant messages and stream LLM reply."""
 
-    def __init__(self, sessionmaker: async_sessionmaker[AsyncSession], agent: BaseAgent) -> None:
+    def __init__(
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        agent: BaseAgent,
+        memory_service: MemoryService | None = None,
+    ) -> None:
         self._sessionmaker = sessionmaker
         self._agent = agent
+        self._memory_service = memory_service
 
     async def begin_turn(
         self, user_id: UUID, chat_id: UUID, user_content: str
@@ -79,22 +88,29 @@ class ChatService:
         return model, self._agent.to_model_messages(history_rows)
 
     async def stream_turn(
-        self, chat_id: UUID, model_name: str, user_content: str, history: list[ModelMessage]
+        self,
+        chat_id: UUID,
+        model_name: str,
+        user_content: str,
+        history: list[ModelMessage],
+        *,
+        user_id: UUID | None = None,
     ) -> AsyncIterator[StreamEvent]:
         """Stream the LLM reply as Delta events and persist the assistant message.
 
-        No DB connection is held while the model streams; the assistant message is
-        written afterwards on its own short-lived session.
-
-        If the stream fails after some tokens, the partial text is persisted with
-        ``incomplete=True`` before the error propagates.  If it fails *before* the first
-        token — e.g. the LLM erroring immediately — nothing is written, so a failed turn
-        never pollutes chat history with a blank assistant message.
+        No DB connection is held while the model streams. When *user_id* is given and a
+        memory service is wired, the recall tool is added to the run's tool list so the
+        model can search long-term memory mid-turn.
         """
+        tools: list[Tool[None]] = []
+        if user_id is not None and self._memory_service is not None:
+            tools.append(make_recall_tool(self._memory_service, user_id))
         acc = ReplyAccumulator()
         completed = False
         try:
-            async for delta in self._agent.stream_reply(model_name, user_content, history, acc):
+            async for delta in self._agent.stream_reply(
+                model_name, user_content, history, acc, tools=tools
+            ):
                 yield Delta(text=delta)
             completed = True
         finally:

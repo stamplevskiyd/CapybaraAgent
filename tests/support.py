@@ -118,3 +118,10 @@ class StubMemoryAgent(FakeAgent):
             custom_output_args=self._extracted,
             call_tools=[],
         )
+
+
+class ToolCallingFakeAgent(FakeAgent):
+    """FakeAgent whose TestModel calls every registered tool — for tool-registration tests."""
+
+    def _build_model(self, name: str) -> Model:
+        return TestModel(custom_output_text=self._output_text)  # call_tools defaults to "all"
