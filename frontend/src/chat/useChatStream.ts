@@ -4,12 +4,21 @@ import { useApiClient } from '../auth/AuthContext'
 import { parseSse } from '../api/sse'
 import { getChat } from './chatApi'
 
+export type ToolCallState = {
+  id: string
+  name: string
+  args: Record<string, unknown>
+  result?: string
+  running: boolean
+}
+
 export type ChatMessage = {
   id: string
   role: 'user' | 'assistant'
   content: string
   streaming: boolean
   error?: boolean
+  toolCalls?: ToolCallState[]
 }
 
 let counter = 0
@@ -61,6 +70,15 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
           role: m.role === 'user' ? 'user' : 'assistant',
           content: m.content,
           streaming: false,
+          toolCalls: m.tool_calls
+            ? m.tool_calls.map((t) => ({
+                id: t.id,
+                name: t.name,
+                args: t.args,
+                result: t.result ?? undefined,
+                running: false,
+              }))
+            : undefined,
         })),
       )
     } finally {
@@ -88,6 +106,10 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
     async (targetChatId: string, assistantId: string, url: string, body: unknown) => {
       const patch = (fn: (m: ChatMessage) => ChatMessage) =>
         setMessages((prev) => prev.map((m) => (m.id === assistantId ? fn(m) : m)))
+      const settleToolCalls = (m: ChatMessage): ChatMessage => ({
+        ...m,
+        toolCalls: m.toolCalls?.map((t) => (t.running ? { ...t, running: false } : t)),
+      })
       const controller = new AbortController()
       abortRef.current = controller
       streamingChatIdRef.current = targetChatId
@@ -108,20 +130,34 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
           } else if (ev.event === 'title') {
             const { title } = JSON.parse(ev.data) as { title: string }
             onTitleRef.current?.(title)
+          } else if (ev.event === 'tool-call') {
+            const tc = JSON.parse(ev.data) as { id: string; name: string; args: Record<string, unknown> }
+            patch((m) => ({
+              ...m,
+              toolCalls: [...(m.toolCalls ?? []), { ...tc, running: true }],
+            }))
+          } else if (ev.event === 'tool-result') {
+            const { id, result } = JSON.parse(ev.data) as { id: string; result: string }
+            patch((m) => ({
+              ...m,
+              toolCalls: (m.toolCalls ?? []).map((t) =>
+                t.id === id ? { ...t, result, running: false } : t,
+              ),
+            }))
           }
         }
         // reader.cancel() from abort causes the loop to exit without throwing;
         // settle the message if that's what happened.
         if (controller.signal.aborted) {
-          patch((m) => ({ ...m, streaming: false }))
+          patch((m) => settleToolCalls({ ...m, streaming: false }))
         }
       } catch (err) {
         if (controller.signal.aborted) {
           // fetch itself was aborted before the response body started
-          patch((m) => ({ ...m, streaming: false }))
+          patch((m) => settleToolCalls({ ...m, streaming: false }))
         } else {
           patch((m) => ({
-            ...m,
+            ...settleToolCalls(m),
             streaming: false,
             error: true,
             content: 'Ошибка при получении ответа.',

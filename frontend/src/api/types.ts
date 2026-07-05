@@ -24,6 +24,13 @@ export interface ModelsOut {
   models: string[]
 }
 
+export interface ToolCallOut {
+  id: string
+  name: string
+  args: Record<string, unknown>
+  result: string | null
+}
+
 export interface MessageOut {
   id: string
   role: string
@@ -31,6 +38,7 @@ export interface MessageOut {
   model: string | null
   incomplete: boolean
   created_at: string
+  tool_calls?: ToolCallOut[] | null
 }
 
 export type ChatDetailOut = ChatOut & { messages: MessageOut[] }

@@ -147,6 +147,34 @@ test('sending clears on done even when a title frame trails it', async () => {
   await waitFor(() => expect(onTitle).toHaveBeenCalledWith('Про капибар'))
 })
 
+test('tracks tool-call state through running and result frames', async () => {
+  server.use(
+    http.post('/api/chats/c1/messages', () => {
+      const body =
+        'event: tool-call\ndata: {"id":"t1","name":"recall","args":{"query":"хобби"}}\n\n' +
+        'event: tool-result\ndata: {"id":"t1","result":"- [personal] походы"}\n\n' +
+        'event: delta\ndata: {"text":"Вы любите походы"}\n\n' +
+        'event: done\ndata: {"message_id":"m1"}\n\n'
+      return new HttpResponse(body, { headers: { 'Content-Type': 'text/event-stream' } })
+    }),
+  )
+  const { result } = renderHook(() => useChatStream('c1'), { wrapper })
+  await act(async () => {
+    await result.current.send('Что я люблю?')
+  })
+  await waitFor(() => expect(result.current.sending).toBe(false))
+  const assistant = result.current.messages.find((m) => m.role === 'assistant')!
+  expect(assistant.toolCalls).toHaveLength(1)
+  expect(assistant.toolCalls![0]).toMatchObject({
+    id: 't1',
+    name: 'recall',
+    args: { query: 'хобби' },
+    result: '- [personal] походы',
+    running: false,
+  })
+  expect(assistant.content).toBe('Вы любите походы')
+})
+
 test('regenerate calls /messages/regenerate and replaces the last assistant without duplicating the user bubble', async () => {
   let regenerateCalled = false
 
