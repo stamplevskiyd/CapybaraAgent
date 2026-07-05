@@ -154,7 +154,9 @@ export function Sidebar({
         <div className={styles.bottomBlock}>
           <button
             type="button"
-            className={memoryActive ? `${styles.navButton} ${styles.navButtonActive}` : styles.navButton}
+            className={
+              memoryActive ? `${styles.navButton} ${styles.navButtonActive}` : styles.navButton
+            }
             onClick={onOpenMemory}
           >
             <Brain size={16} />

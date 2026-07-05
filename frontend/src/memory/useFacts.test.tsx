@@ -3,7 +3,9 @@ import { server, http, HttpResponse } from '../test/msw'
 import { AuthProvider } from '../auth/AuthContext'
 import { useFacts } from './useFacts'
 
-const wrapper = ({ children }: { children: React.ReactNode }) => <AuthProvider>{children}</AuthProvider>
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <AuthProvider>{children}</AuthProvider>
+)
 
 beforeEach(() =>
   localStorage.setItem('capybara.session', JSON.stringify({ token: 't', username: 'r' })),

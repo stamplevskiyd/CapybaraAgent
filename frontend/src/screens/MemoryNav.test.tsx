@@ -10,7 +10,9 @@ beforeEach(() =>
 
 test('clicking «Память» swaps main to the memory screen and back', async () => {
   server.use(
-    http.get('/api/models', () => HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] })),
+    http.get('/api/models', () =>
+      HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
+    ),
     http.get('/api/chats', () => HttpResponse.json([])),
     http.get('/api/memory/facts', () => HttpResponse.json([])),
     http.get('/api/memory/settings', () => HttpResponse.json({ auto_capture: true })),

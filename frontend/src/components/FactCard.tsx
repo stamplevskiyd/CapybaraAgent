@@ -28,7 +28,12 @@ export function FactCard({
           {meta.label}
         </span>
         <div className={styles.actions}>
-          <button type="button" className={styles.iconBtn} aria-label="Редактировать" onClick={onEdit}>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            aria-label="Редактировать"
+            onClick={onEdit}
+          >
             <Pencil size={14} />
           </button>
           <button type="button" className={styles.iconBtn} aria-label="Удалить" onClick={onDelete}>
