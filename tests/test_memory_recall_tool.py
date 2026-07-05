@@ -37,9 +37,7 @@ async def test_recall_tool_is_registered_and_reaches_seeded_facts(
     model, history = await service.begin_turn(user_id, chat_id, "Что я люблю?")
     _ = [
         e
-        async for e in service.stream_turn(
-            chat_id, model, "Что я люблю?", history, user_id=user_id
-        )
+        async for e in service.stream_turn(chat_id, model, "Что я люблю?", history, user_id=user_id)
     ]
 
     assert recorded, "recall tool was never invoked — tool not registered via the tools list"

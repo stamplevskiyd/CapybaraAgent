@@ -29,11 +29,6 @@ class FactRepo(BaseRepository[Fact]):
         via ``1 - distance`` and apply their own threshold.
         """
         distance = Fact.embedding.cosine_distance(embedding).label("distance")
-        stmt = (
-            select(Fact, distance)
-            .where(Fact.user_id == user_id)
-            .order_by(distance)
-            .limit(k)
-        )
+        stmt = select(Fact, distance).where(Fact.user_id == user_id).order_by(distance).limit(k)
         result = await self._session.execute(stmt)
         return [(row.Fact, row.distance) for row in result.all()]

@@ -71,9 +71,7 @@ async def test_update_reembeds_only_on_content_change(
     assert results and results[0][0].id == fact.id and results[0][1] < 0.01
 
 
-async def test_delete_and_ownership_guard(
-    engine: AsyncEngine, settings: Settings, user_id
-) -> None:  # type: ignore[no-untyped-def]
+async def test_delete_and_ownership_guard(engine: AsyncEngine, settings: Settings, user_id) -> None:  # type: ignore[no-untyped-def]
     from uuid import uuid4
 
     maker = create_sessionmaker(engine)

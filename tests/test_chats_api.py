@@ -163,9 +163,7 @@ async def test_send_message_stream_error_is_generic(
     assert "Internal server error" in body
 
 
-async def test_empty_agent_reply_still_emits_done(
-    client: AsyncClient, settings: Settings
-) -> None:
+async def test_empty_agent_reply_still_emits_done(client: AsyncClient, settings: Settings) -> None:
     """A successful but empty model reply must still terminate the SSE stream."""
     chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
     app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "")

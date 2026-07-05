@@ -59,9 +59,7 @@ async def client(engine: AsyncEngine, settings: Settings, make_user):  # type: i
 
 async def test_send_message_auto_captures_fact(client: AsyncClient) -> None:
     """POST /chats/{id}/messages triggers auto-capture after the stream drains."""
-    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()[
-        "id"
-    ]
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
     async with client.stream(
         "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
     ) as resp:
@@ -76,9 +74,7 @@ async def test_send_message_auto_captures_fact(client: AsyncClient) -> None:
 
 async def test_regenerate_does_not_auto_capture(client: AsyncClient) -> None:
     """POST /chats/{id}/messages/regenerate does NOT attach a BackgroundTask."""
-    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()[
-        "id"
-    ]
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
     async with client.stream(
         "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
     ) as resp:
