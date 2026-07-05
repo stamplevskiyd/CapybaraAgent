@@ -11,13 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent.base import BaseAgent
 from capybara.config import Settings
-from capybara.db.models import Chat, User
+from capybara.db.models import Chat, Fact, User
 from capybara.repositories.chat_repo import ChatRepo
+from capybara.repositories.fact_repo import FactRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
 from capybara.services.auth_service import AuthService
 from capybara.services.chat_service import ChatService
+from capybara.services.memory_service import MemoryService
 from capybara.services.user_service import UserService
 
 _bearer = HTTPBearer(auto_error=False)
@@ -123,9 +125,38 @@ async def get_owned_chat(
     return chat
 
 
+def get_memory_service(
+    sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
+    agent: Annotated[BaseAgent, Depends(get_agent)],
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> MemoryService:
+    """Return a MemoryService that owns short-lived sessions from the app sessionmaker."""
+    return MemoryService(sessionmaker, agent, settings)
+
+
+def get_fact_repo(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> FactRepo:
+    """Return a FactRepo bound to the current request session."""
+    return FactRepo(session)
+
+
+async def get_owned_fact(
+    fact_id: UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    facts: Annotated[FactRepo, Depends(get_fact_repo)],
+) -> Fact:
+    """Return the fact if it belongs to the current user, else 404."""
+    fact = await facts.get(fact_id)
+    if fact is None or fact.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Fact not found")
+    return fact
+
+
 def get_chat_service(
     sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
     agent: Annotated[BaseAgent, Depends(get_agent)],
+    memory_service: Annotated[MemoryService, Depends(get_memory_service)],
 ) -> ChatService:
-    """Return a ChatService that owns short-lived sessions for the streaming turn."""
-    return ChatService(sessionmaker, agent)
+    """Return a ChatService that owns short-lived sessions and carries the recall tool."""
+    return ChatService(sessionmaker, agent, memory_service)

@@ -1,6 +1,7 @@
 """Pydantic request/response schemas for the chat, user, and auth APIs."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -167,3 +168,66 @@ class TokenResponse(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+
+
+FactCategory = Literal["personal", "project", "preference"]
+
+
+class FactCreate(BaseModel):
+    """Payload for creating a manual fact."""
+
+    content: str = Field(min_length=1, max_length=2000)
+    category: FactCategory
+
+    @field_validator("content")
+    @classmethod
+    def _content_not_blank(cls, value: str) -> str:
+        """Reject whitespace-only fact content."""
+        return _reject_blank_text(value)
+
+
+class FactUpdate(BaseModel):
+    """Partial update for a fact: content and/or category. At least one required."""
+
+    content: str | None = Field(default=None, min_length=1, max_length=2000)
+    category: FactCategory | None = None
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _strip_optional_content(cls, value: object) -> object:
+        """Trim optional content and reject whitespace-only values."""
+        if value is None:
+            return None
+        return _strip_required_text(value)
+
+    @model_validator(mode="after")
+    def _require_one(self) -> FactUpdate:
+        """Reject an empty patch — at least one field must be provided."""
+        if self.content is None and self.category is None:
+            raise ValueError("at least one of content, category must be provided")
+        return self
+
+
+class FactOut(BaseModel):
+    """Response schema for a single fact."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    category: str
+    content: str
+    source: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class MemorySettingsOut(BaseModel):
+    """Response schema for the memory auto-capture toggle."""
+
+    auto_capture: bool
+
+
+class MemorySettingsUpdate(BaseModel):
+    """Request schema for updating the memory auto-capture toggle."""
+
+    auto_capture: bool
