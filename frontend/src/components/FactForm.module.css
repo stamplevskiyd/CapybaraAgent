@@ -1,0 +1,63 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  padding: 14px 15px;
+}
+.textarea {
+  width: 100%;
+  resize: vertical;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9px;
+  color: #e3dacf;
+  font-family: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  padding: 9px 10px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.select {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #d6cdc3;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 9px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.cancel,
+.save {
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.cancel {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #c9c0b6;
+}
+.save {
+  background: var(--accent, #d89b6c);
+  color: #1a1712;
+  font-weight: 600;
+}
+.save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

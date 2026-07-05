@@ -1,0 +1,59 @@
+.card {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 14px;
+  padding: 15px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tag {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+.actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.card:hover .actions,
+.card:focus-within .actions {
+  opacity: 1;
+}
+.iconBtn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: #8a8178;
+  cursor: pointer;
+}
+.iconBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #d6cdc3;
+}
+.content {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #e3dacf;
+}
+.date {
+  font-size: 11px;
+  color: #726a61;
+  margin-top: auto;
+}
