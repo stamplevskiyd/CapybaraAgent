@@ -137,3 +137,31 @@ class ToolCallingFakeAgent(FakeAgent):
 
     def _build_model(self, name: str) -> Model:
         return TestModel(custom_output_text=self._output_text)  # call_tools defaults to "all"
+
+
+class ScriptedToolAgent(FakeAgent):
+    """Agent whose stream yields a fixed tool-call → tool-result → text sequence.
+
+    Lets service and router tests exercise tool-event mapping and persistence
+    deterministically, independent of TestModel's tool-calling behaviour.
+    """
+
+    async def stream_reply(  # type: ignore[override]
+        self,
+        model_name: str,
+        user_content: str,
+        history,  # type: ignore[no-untyped-def]
+        acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
+    ):
+        """Yield one tool call, its result, then the configured text."""
+        from capybara.agent.base import StreamedToolCall, StreamedToolResult
+
+        args = {"query": "любимое"}
+        acc.tool_calls.append({"id": "call-1", "name": "recall", "args": args, "result": None})
+        yield StreamedToolCall(id="call-1", name="recall", args=args)
+        acc.tool_calls[0]["result"] = "- [personal] походы"
+        yield StreamedToolResult(id="call-1", result="- [personal] походы")
+        acc.text += self._output_text
+        yield StreamedText(text=self._output_text)
+        acc.model = "test"

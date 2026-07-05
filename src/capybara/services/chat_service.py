@@ -8,13 +8,19 @@ from pydantic_ai import Tool
 from pydantic_ai.messages import ModelMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from capybara.agent.base import BaseAgent, ReplyAccumulator
+from capybara.agent.base import (
+    BaseAgent,
+    ReplyAccumulator,
+    StreamedText,
+    StreamedToolCall,
+    StreamedToolResult,
+)
 from capybara.db.models import Message
 from capybara.db.models.chat import DEFAULT_CHAT_TITLE
 from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
-from capybara.services.events import Delta, Done, StreamEvent
+from capybara.services.events import Delta, Done, StreamEvent, ToolCall, ToolResult
 from capybara.services.memory_service import MemoryService
 from capybara.services.memory_tools import make_recall_tool
 
@@ -112,10 +118,15 @@ class ChatService:
         acc = ReplyAccumulator()
         completed = False
         try:
-            async for delta in self._agent.stream_reply(
+            async for event in self._agent.stream_reply(
                 model_name, user_content, history, acc, tools=tools
             ):
-                yield Delta(text=delta)
+                if isinstance(event, StreamedText):
+                    yield Delta(text=event.text)
+                elif isinstance(event, StreamedToolCall):
+                    yield ToolCall(id=event.id, name=event.name, args=event.args)
+                elif isinstance(event, StreamedToolResult):
+                    yield ToolResult(id=event.id, result=event.result)
             completed = True
         finally:
             assistant_id = await self._persist_assistant(chat_id, acc, completed=completed)
@@ -220,6 +231,7 @@ class ChatService:
                 model=acc.model,
                 usage_json=acc.usage,
                 incomplete=not completed,
+                tool_calls=acc.tool_calls or None,
             )
             chat = await chats.get(chat_id)
             if chat is not None:

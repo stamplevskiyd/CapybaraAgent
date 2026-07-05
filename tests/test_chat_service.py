@@ -10,8 +10,8 @@ from capybara.db.models import Chat, Message
 from capybara.filters import FieldEquals
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatNotFoundError, ChatService, NoUserMessageError
-from capybara.services.events import Delta, Done
-from support import FakeAgent, PartialThenFailAgent, RaisingAgent
+from capybara.services.events import Delta, Done, ToolCall, ToolResult
+from support import FakeAgent, PartialThenFailAgent, RaisingAgent, ScriptedToolAgent
 
 
 async def _seed_chat(engine: AsyncEngine, make_user, username: str) -> tuple[object, object]:  # type: ignore[no-untyped-def]
@@ -435,3 +435,42 @@ async def test_generate_title_keeps_default_when_output_blank(
         reloaded = await ChatRepo(check).get(chat_id)
         assert reloaded is not None
         assert reloaded.title == DEFAULT_CHAT_TITLE
+
+
+async def test_stream_turn_emits_and_persists_tool_calls(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """Tool call/result events are streamed in order and stored on the assistant row."""
+    user_id, chat_id = await _seed_chat(engine, make_user, "tool_user")
+    maker = create_sessionmaker(engine)
+
+    service = ChatService(maker, ScriptedToolAgent(settings, "Ответ"))
+
+    model, history = await service.begin_turn(user_id, chat_id, "Что я люблю?")  # type: ignore[arg-type]
+    events = [
+        e
+        async for e in service.stream_turn(chat_id, model, "Что я люблю?", history, user_id=user_id)
+    ]
+
+    kinds = [type(e).__name__ for e in events]
+    assert kinds.index("ToolCall") < kinds.index("ToolResult") < kinds.index("Delta")
+    call = next(e for e in events if isinstance(e, ToolCall))
+    res = next(e for e in events if isinstance(e, ToolResult))
+    assert call.name == "recall" and call.args == {"query": "любимое"}
+    assert res.id == call.id and "походы" in res.result
+    assert any(isinstance(e, Done) for e in events)
+
+    async with maker() as check:
+        stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
+    assistant = stored[-1]
+    assert assistant.role == "assistant"
+    assert assistant.tool_calls == [
+        {
+            "id": "call-1",
+            "name": "recall",
+            "args": {"query": "любимое"},
+            "result": "- [personal] походы",
+        }
+    ]

@@ -1,4 +1,4 @@
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 
@@ -109,3 +109,14 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
         )
         assert "ix_facts_embedding_hnsw" in fact_indexes
         assert "ix_facts_user_id_created_at" in fact_indexes
+
+
+async def test_messages_has_tool_calls_column(migrated_engine: AsyncEngine) -> None:
+    """The tool_calls JSONB column exists after migrations run."""
+
+    def _columns(sync_conn):  # type: ignore[no-untyped-def]
+        return {c["name"] for c in inspect(sync_conn).get_columns("messages")}
+
+    async with migrated_engine.connect() as conn:
+        cols = await conn.run_sync(_columns)
+    assert "tool_calls" in cols
