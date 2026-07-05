@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16
+    image: pgvector/pgvector:pg16
     # POSTGRES_USER/PASSWORD/DB come from the env files — single source of truth
     # shared with the API's derived DATABASE_URL.
     env_file:

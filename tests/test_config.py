@@ -38,3 +38,13 @@ def test_settings_rejects_short_jwt_secret(monkeypatch):
     monkeypatch.setenv("JWT_SECRET", "too-short")
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_memory_settings_have_defaults() -> None:
+    from capybara.config import Settings
+
+    s = Settings(jwt_secret="x" * 32)
+    assert s.embedding_model == "nomic-embed-text"
+    assert s.memory_recall_k == 5
+    assert s.memory_recall_min_similarity == 0.3
+    assert s.memory_dedup_threshold == 0.9
