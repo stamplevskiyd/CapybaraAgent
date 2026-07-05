@@ -5,7 +5,7 @@ from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
 
-from capybara.agent.base import BaseAgent, ReplyAccumulator
+from capybara.agent.base import BaseAgent, ReplyAccumulator, StreamedText
 from capybara.config import Settings
 
 
@@ -52,10 +52,10 @@ class RaisingAgent(BaseAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[StreamedText]:
         """Raise immediately; the trailing yield only marks this as a generator."""
         raise RuntimeError(self._message)
-        yield ""  # pragma: no cover
+        yield StreamedText(text="")  # pragma: no cover
 
 
 class PartialThenFailAgent(BaseAgent):
@@ -82,10 +82,10 @@ class PartialThenFailAgent(BaseAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[StreamedText]:
         """Yield one accumulated delta, then raise to abort the stream."""
         acc.text += self._partial
-        yield self._partial
+        yield StreamedText(text=self._partial)
         raise RuntimeError(self._message)
 
 

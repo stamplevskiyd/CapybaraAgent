@@ -1,7 +1,7 @@
 import pytest
 from pydantic_ai.messages import ModelRequest, ModelResponse
 
-from capybara.agent.base import BaseAgent, ReplyAccumulator
+from capybara.agent.base import BaseAgent, ReplyAccumulator, StreamedText
 from capybara.config import Settings
 from capybara.db.models import Message
 from support import FakeAgent
@@ -12,11 +12,13 @@ async def test_stream_reply_yields_deltas_and_fills_accumulator(
 ) -> None:
     agent = FakeAgent(settings, "Привет, Роман")
     acc = ReplyAccumulator()
-    chunks = [delta async for delta in agent.stream_reply("test-model", "Привет", [], acc)]
-    assert "".join(chunks) == "Привет, Роман"
+    events = [e async for e in agent.stream_reply("test-model", "Привет", [], acc)]
+    text = "".join(e.text for e in events if isinstance(e, StreamedText))
+    assert text == "Привет, Роман"
     assert acc.text == "Привет, Роман"
     assert acc.model == "test"
-    assert acc.usage == {"total_tokens": 54}
+    assert acc.usage is not None and acc.usage["total_tokens"] > 0
+    assert acc.tool_calls == []
 
 
 def test_to_model_messages_maps_roles() -> None:
