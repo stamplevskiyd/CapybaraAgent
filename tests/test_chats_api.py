@@ -161,6 +161,54 @@ async def test_send_message_stream_error_is_generic(
     assert "Internal server error" in body
 
 
+async def test_empty_agent_reply_still_emits_done(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """A successful but empty model reply must still terminate the SSE stream."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "")
+
+    async with client.stream(
+        "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
+    ) as resp:
+        assert resp.status_code == 200
+        body = ""
+        async for chunk in resp.aiter_text():
+            body += chunk
+
+    assert "event: done" in body
+    assert '"message_id": null' in body
+    fetched = await client.get(f"/chats/{chat_id}")
+    assert [m["role"] for m in fetched.json()["messages"]] == ["user"]
+
+
+async def test_create_chat_blank_title_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only titles are invalid; omit the field to use the default title."""
+    resp = await client.post("/chats", json={"title": "   ", "model": "test-model"})
+    assert resp.status_code == 422
+
+
+async def test_patch_chat_blank_title_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only renames are invalid."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"title": "   "})
+    assert resp.status_code == 422
+
+
+async def test_patch_chat_blank_model_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only model names fail request validation, not provider validation."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"model": "   "})
+    assert resp.status_code == 422
+
+
+async def test_send_whitespace_message_returns_422(client: AsyncClient) -> None:
+    """Whitespace-only messages are not valid user turns."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.post(f"/chats/{chat_id}/messages", json={"content": "   "})
+    assert resp.status_code == 422
+
+
 async def test_get_chat_owned_by_other_user_returns_404(
     client: AsyncClient,
     engine: AsyncEngine,
@@ -376,3 +424,89 @@ async def test_regenerate_without_model_returns_409(client: AsyncClient) -> None
     chat_id = (await client.post("/chats", json={"title": "c"})).json()["id"]  # no model
     resp = await client.post(f"/chats/{chat_id}/messages/regenerate")
     assert resp.status_code == 409
+
+
+async def test_patch_chat_rename_only(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"title": "Переименовано"})
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "Переименовано"
+    assert resp.json()["model"] == "test-model"  # untouched
+
+
+async def test_patch_chat_favorite_only(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={"is_favorite": True})
+    assert resp.status_code == 200
+    assert resp.json()["is_favorite"] is True
+
+
+async def test_patch_chat_empty_body_422(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    resp = await client.patch(f"/chats/{chat_id}", json={})
+    assert resp.status_code == 422
+
+
+async def test_patch_chat_model_still_validates(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    ok = await client.patch(f"/chats/{chat_id}", json={"model": "test-model"})
+    assert ok.status_code == 200
+    bad = await client.patch(f"/chats/{chat_id}", json={"model": "ghost:1b"})
+    assert bad.status_code == 409
+
+
+async def test_delete_chat_removes_it_and_messages(client: AsyncClient) -> None:
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    # produce a message so the cascade has something to remove
+    async with client.stream("POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}) as r:
+        async for _ in r.aiter_text():
+            pass
+
+    resp = await client.delete(f"/chats/{chat_id}")
+    assert resp.status_code == 204
+
+    gone = await client.get(f"/chats/{chat_id}")
+    assert gone.status_code == 404
+    listed = await client.get("/chats")
+    assert all(c["id"] != chat_id for c in listed.json())
+
+
+async def test_delete_other_users_chat_404(
+    client: AsyncClient,
+    engine,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    from capybara.db.engine import create_sessionmaker
+    from capybara.db.models import Chat
+
+    maker = create_sessionmaker(engine)
+    async with maker() as sess:
+        other = await make_user(sess, username="delother", display_name="O")
+        chat = Chat(user_id=other.id, title="private", model="test-model")
+        sess.add(chat)
+        await sess.commit()
+        other_chat_id = chat.id
+
+    resp = await client.delete(f"/chats/{other_chat_id}")
+    assert resp.status_code == 404
+
+
+def _sse_events(body: str) -> list[str]:
+    return [ln[len("event: ") :] for ln in body.splitlines() if ln.startswith("event: ")]
+
+
+async def test_first_message_emits_title_event(client: AsyncClient) -> None:
+    """The first turn of a default-titled chat emits an SSE title event; later turns do not."""
+    chat_id = (await client.post("/chats", json={"model": "test-model"})).json()[
+        "id"
+    ]  # default title
+
+    async with client.stream("POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}) as r:
+        first = "".join([c async for c in r.aiter_text()])
+    assert "title" in _sse_events(first)
+    assert "event: title" in first
+
+    # Second turn: title already set → no title event.
+    async with client.stream("POST", f"/chats/{chat_id}/messages", json={"content": "Ещё"}) as r:
+        second = "".join([c async for c in r.aiter_text()])
+    assert "title" not in _sse_events(second)

@@ -23,10 +23,8 @@ export function AuthScreen() {
       if (mode === 'login') await login(username, password)
       else await register(displayName, username, password)
     } catch (err) {
-      if (err instanceof ApiError && err.status === 401)
-        setError('Неверный логин или пароль')
-      else if (err instanceof ApiError && err.status === 409)
-        setError('Логин уже занят')
+      if (err instanceof ApiError && err.status === 401) setError('Неверный логин или пароль')
+      else if (err instanceof ApiError && err.status === 409) setError('Логин уже занят')
       else setError('Что-то пошло не так. Попробуйте ещё раз.')
     } finally {
       setBusy(false)
@@ -36,7 +34,8 @@ export function AuthScreen() {
   return (
     <div className={styles.screen}>
       <div className={styles.header}>
-        <CapyLogo size={120} />
+        <CapyLogo size={56} />
+        <div className={styles.wordmark}>CapybaraAgent</div>
         <div className={styles.tagline}>Локальный AI-агент</div>
       </div>
       <form className={styles.card} onSubmit={onSubmit}>
@@ -60,11 +59,7 @@ export function AuthScreen() {
         </label>
         <label className={styles.field}>
           <span>Пароль</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         {error && <div className={styles.error}>{error}</div>}
         <button className={styles.primary} type="submit" disabled={busy}>
@@ -72,11 +67,23 @@ export function AuthScreen() {
         </button>
         <div className={styles.switch}>
           {mode === 'login' ? (
-            <button type="button" onClick={() => { setMode('register'); setError(null) }}>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('register')
+                setError(null)
+              }}
+            >
               Нет профиля? <span>Создать пользователя</span>
             </button>
           ) : (
-            <button type="button" onClick={() => { setMode('login'); setError(null) }}>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('login')
+                setError(null)
+              }}
+            >
               Уже есть профиль? <span>Войти</span>
             </button>
           )}

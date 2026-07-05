@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
@@ -104,6 +105,33 @@ async def test_stream_turn_does_not_persist_empty_assistant_on_immediate_error(
     async with maker() as check:
         stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
     assert [m.role for m in stored] == ["user"]
+
+
+async def test_begin_turn_touches_chat_when_user_message_is_saved(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """A saved user turn bumps chat recency even if the assistant later fails."""
+    maker = create_sessionmaker(engine)
+    old_time = datetime(2020, 1, 1, tzinfo=UTC)
+    async with maker() as setup:
+        user = await make_user(setup, username="touch_user", display_name="Touch")
+        chat = Chat(user_id=user.id, title="c", model="test-model", updated_at=old_time)
+        setup.add(chat)
+        await setup.commit()
+        user_id, chat_id = user.id, chat.id
+
+    service = ChatService(maker, RaisingAgent(settings, "boom"))
+    model, history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError):
+        async for _ in service.stream_turn(chat_id, model, "Вопрос", history):  # type: ignore[arg-type]
+            pass
+
+    async with maker() as check:
+        reloaded = await check.get(Chat, chat_id)
+        assert reloaded is not None
+        assert reloaded.updated_at > old_time
 
 
 async def test_begin_turn_excludes_incomplete_from_history(
@@ -350,3 +378,60 @@ async def test_regenerate_turn_rejects_unavailable_model(
 
     with pytest.raises(ModelUnavailableError):
         await service.regenerate_turn(user_id, chat_id)  # type: ignore[arg-type]
+
+
+async def test_generate_title_sets_title_only_when_default(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """Title is generated for a default-titled chat, and skipped for a renamed one."""
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup, username="titler", display_name="T")
+        default_chat = Chat(user_id=user.id, model="test-model")  # title defaults
+        named_chat = Chat(user_id=user.id, title="Моё имя", model="test-model")
+        setup.add_all([default_chat, named_chat])
+        await setup.commit()
+        default_id, named_id = default_chat.id, named_chat.id
+
+    service = ChatService(maker, FakeAgent(settings, "Сгенерённый заголовок"))
+
+    t1 = await service.generate_title(default_id, "О чём поговорим?")
+    assert t1 == "Сгенерённый заголовок"
+    t2 = await service.generate_title(named_id, "О чём поговорим?")
+    assert t2 is None  # already has a custom title → skipped
+
+    async with maker() as check:
+        from capybara.repositories.chat_repo import ChatRepo
+
+        assert (await ChatRepo(check).get(default_id)).title == "Сгенерённый заголовок"  # type: ignore[union-attr]
+        assert (await ChatRepo(check).get(named_id)).title == "Моё имя"  # type: ignore[union-attr]
+
+
+async def test_generate_title_keeps_default_when_output_blank(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """A blank generated title never overwrites the default title."""
+    from capybara.db.models.chat import DEFAULT_CHAT_TITLE
+    from capybara.repositories.chat_repo import ChatRepo
+
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup, username="blanktitle", display_name="B")
+        chat = Chat(user_id=user.id, model="test-model")  # default title
+        setup.add(chat)
+        await setup.commit()
+        chat_id = chat.id
+
+    # FakeAgent with empty output → _clean_title falls back to the (whitespace) message → "".
+    service = ChatService(maker, FakeAgent(settings, ""))
+    result = await service.generate_title(chat_id, "   ")
+    assert result is None
+
+    async with maker() as check:
+        reloaded = await ChatRepo(check).get(chat_id)
+        assert reloaded is not None
+        assert reloaded.title == DEFAULT_CHAT_TITLE

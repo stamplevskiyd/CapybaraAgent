@@ -30,5 +30,13 @@ export function useChats() {
     [api],
   )
 
-  return { chats, loading, reload, newChat }
+  const patchLocal = useCallback((id: string, fields: Partial<ChatOut>) => {
+    setChats((prev) => prev.map((c) => (c.id === id ? { ...c, ...fields } : c)))
+  }, [])
+
+  const removeLocal = useCallback((id: string) => {
+    setChats((prev) => prev.filter((c) => c.id !== id))
+  }, [])
+
+  return { chats, loading, reload, newChat, patchLocal, removeLocal }
 }

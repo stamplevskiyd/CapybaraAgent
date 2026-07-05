@@ -1,5 +1,6 @@
 /** Chat screen: welcome empty-state when no chat is active, or active thread with streaming. */
 import { useEffect, useRef, useState } from 'react'
+import { PanelLeft } from 'lucide-react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { CapyLogo } from '../components/CapyLogo'
 import { Composer } from '../components/Composer'
@@ -10,22 +11,14 @@ import { useChats } from '../chat/useChats'
 import { useModels } from '../chat/useModels'
 import { useChatStream } from '../chat/useChatStream'
 import { useChatRuntime } from '../chat/runtime'
-import { patchChatModel } from '../chat/chatApi'
+import { deleteChat, renameChat, setFavorite, patchChatModel } from '../chat/chatApi'
 import { loadLastModel, saveLastModel } from '../chat/lastModel'
 import styles from './ChatScreen.module.css'
-
-/** Prompt chips shown on the welcome screen to seed the composer. */
-const CHIPS = [
-  { emoji: '✍️', label: 'Написать текст' },
-  { emoji: '🔍', label: 'Найти информацию' },
-  { emoji: '💡', label: 'Придумать идею' },
-  { emoji: '📝', label: 'Суммаризировать' },
-]
 
 /**
  * Top-level chat layout: sidebar + main area.
  *
- * When `activeChatId` is null renders the welcome state (glyph, greeting, composer, chips).
+ * When `activeChatId` is null renders the welcome state (glyph, greeting, composer).
  * When set renders the active thread (header, Thread, loading indicator, composer).
  *
  * The whole screen is wrapped in `AssistantRuntimeProvider` so both the welcome
@@ -37,23 +30,41 @@ const CHIPS = [
  *   3. `send(text, id)` is called with the chatId override so no deferral is needed.
  *   4. `skipLoadHistory` prevents `loadHistory` from being called for the new chat
  *      (it has no server-side history yet; messages come from the live stream).
- *
- * Note on welcome chips: `initialText` was removed from Composer, so chips no longer
- * prefill the input. The buttons are kept for visual parity but have no click handler.
- * Chip-to-composer prefill can be wired in a follow-up via the composer runtime API.
  */
 export function ChatScreen() {
   const { user } = useAuth()
   const api = useApiClient()
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [draftModel, setDraftModel] = useState<string | null>(() => loadLastModel())
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('capybara.sidebarCollapsed') === '1'
+    } catch {
+      return false
+    }
+  })
   /** Set to true before updating activeChatId for a brand-new chat to skip history load. */
   const skipLoadHistory = useRef(false)
 
-  const { chats, reload, newChat } = useChats()
+  /** Toggle the sidebar open/shut and remember the choice across sessions. */
+  function toggleSidebar() {
+    setSidebarCollapsed((v) => {
+      const next = !v
+      try {
+        localStorage.setItem('capybara.sidebarCollapsed', next ? '1' : '0')
+      } catch {
+        // ignore storage failures — collapse state is a convenience
+      }
+      return next
+    })
+  }
+
+  const { chats, reload, newChat, patchLocal, removeLocal } = useChats()
   const { models } = useModels()
   const { messages, sending, loadingHistory, send, loadHistory, cancel, regenerate } =
-    useChatStream(activeChatId)
+    useChatStream(activeChatId, (title) => {
+      if (activeChatId) patchLocal(activeChatId, { title })
+    })
 
   /**
    * Load history whenever the active chat changes.
@@ -80,15 +91,15 @@ export function ChatScreen() {
     const modelValid = selectedModel !== null && models.includes(selectedModel)
     if (!modelValid) return
     if (activeChatId) {
+      // No reload: the reply streams in place and any title change arrives via the
+      // SSE `title` event (→ patchLocal). A full list refetch per message is wasteful.
       await send(text)
-      await reload()
       return
     }
     const chat = await newChat(draftModel ?? undefined)
     setActiveChatId(chat.id)
     skipLoadHistory.current = true
     await send(text, chat.id)
-    await reload()
   }
 
   const runtime = useChatRuntime({
@@ -99,13 +110,64 @@ export function ChatScreen() {
     onCancel: cancel,
   })
 
-  /** Update the selected model; persists to localStorage, updates draft, and PATCHes the active chat if open. */
+  /**
+   * Toggle favorite: optimistic local flip, then persist. On failure the list is
+   * re-synced from the server so the UI never drifts from the persisted state.
+   */
+  async function handleToggleFavorite(id: string) {
+    const chat = chats.find((c) => c.id === id)
+    const next = !(chat?.is_favorite ?? false)
+    patchLocal(id, { is_favorite: next })
+    try {
+      await setFavorite(api, id, next)
+    } catch {
+      await reload()
+    }
+  }
+
+  /** Rename: optimistic local update, then persist; re-sync from the server on failure. */
+  async function handleRename(id: string, title: string) {
+    patchLocal(id, { title })
+    try {
+      await renameChat(api, id, title)
+    } catch {
+      await reload()
+    }
+  }
+
+  /**
+   * Delete: remove locally (returning to welcome if it was active), then persist.
+   * On failure the still-existing chat is restored via a re-sync, and re-selected
+   * if it was the active one.
+   */
+  async function handleDelete(id: string) {
+    const wasActive = id === activeChatId
+    if (wasActive) setActiveChatId(null)
+    removeLocal(id)
+    try {
+      await deleteChat(api, id)
+    } catch {
+      await reload()
+      if (wasActive) setActiveChatId(id)
+    }
+  }
+
+  /**
+   * Update the selected model; persists to localStorage, updates draft, and PATCHes
+   * the active chat if open. A failed PATCH reverts the draft and re-syncs the chat.
+   */
   async function handleSelectModel(model: string) {
+    const prevDraft = draftModel
     saveLastModel(model)
     setDraftModel(model)
     if (activeChatId) {
-      await patchChatModel(api, activeChatId, model)
-      await reload()
+      try {
+        await patchChatModel(api, activeChatId, model)
+        await reload()
+      } catch {
+        setDraftModel(prevDraft)
+        await reload()
+      }
     }
   }
 
@@ -115,35 +177,47 @@ export function ChatScreen() {
         <Sidebar
           chats={chats}
           activeChatId={activeChatId}
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={toggleSidebar}
           onSelect={setActiveChatId}
           onNewChat={() => setActiveChatId(null)}
+          onToggleFavorite={handleToggleFavorite}
+          onRename={handleRename}
+          onDelete={handleDelete}
         />
         <main className={styles.main}>
+          {sidebarCollapsed && (
+            <button
+              type="button"
+              className={styles.expandBtn}
+              onClick={toggleSidebar}
+              aria-label="Развернуть панель"
+            >
+              <PanelLeft size={18} strokeWidth={1.8} />
+            </button>
+          )}
           {activeChatId === null ? (
             <div className={styles.welcome}>
               <div className={styles.welcomeContent}>
-                <CapyLogo size={78} />
+                <CapyLogo size={64} />
                 <h1 className={styles.greeting}>
                   Чем помочь, {user?.displayName ?? 'пользователь'}?
                 </h1>
-                <p className={styles.subtitle}>Задайте вопрос или выберите подсказку ниже.</p>
+                <p className={styles.subtitle}>Задайте любой вопрос — я помогу.</p>
                 <Composer
                   models={models}
                   selectedModel={selectedModel}
                   onSelectModel={handleSelectModel}
                 />
-                <div className={styles.chips}>
-                  {CHIPS.map((c) => (
-                    <button key={c.label} type="button" className={styles.chip}>
-                      {c.emoji} {c.label}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           ) : (
             <div className={styles.active}>
-              <header className={styles.header}>
+              <header
+                className={
+                  sidebarCollapsed ? `${styles.header} ${styles.headerShifted}` : styles.header
+                }
+              >
                 <span className={styles.chatTitle}>{activeChat?.title ?? 'Чат'}</span>
               </header>
               {loadingHistory && messages.length === 0 ? (

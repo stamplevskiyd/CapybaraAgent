@@ -68,6 +68,16 @@ async def test_login_missing_field_422(client: AsyncClient) -> None:
     assert resp.status_code == 422
 
 
+async def test_login_whitespace_only_fields_422(client: AsyncClient) -> None:
+    """Whitespace-only login fields are rejected as blank."""
+    for payload in (
+        {"username": "   ", "password": "password123"},
+        {"username": "roman", "password": "   "},
+    ):
+        resp = await client.post("/auth/login", json=payload)
+        assert resp.status_code == 422
+
+
 async def test_login_oversized_password_422(client: AsyncClient) -> None:
     """An over-long password is rejected before hitting argon2 verification."""
     resp = await client.post("/auth/login", json={"username": "roman", "password": "x" * 129})

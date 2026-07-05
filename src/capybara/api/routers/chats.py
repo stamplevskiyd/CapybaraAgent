@@ -76,25 +76,40 @@ async def get_chat(
         id=chat.id,
         title=chat.title,
         model=chat.model,
+        is_favorite=chat.is_favorite,
         created_at=chat.created_at,
         updated_at=chat.updated_at,
         messages=[MessageOut.model_validate(m) for m in rows],
     )
 
 
+@router.delete("/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat(
+    chat: Annotated[Chat, Depends(get_owned_chat)],
+    chats: Annotated[ChatRepo, Depends(get_chat_repo)],
+) -> None:
+    """Delete a chat and its messages (cascade); 404 if not owned."""
+    await chats.delete(chat)
+
+
 @router.patch("/{chat_id}", response_model=ChatOut)
-async def update_chat_model(
+async def update_chat(
     payload: ChatUpdate,
     chat: Annotated[Chat, Depends(get_owned_chat)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
     agent: Annotated[BaseAgent, Depends(get_agent)],
 ) -> ChatOut:
-    """Set the chat's model after validating it is installed; 404 if not owned."""
-    try:
-        await agent.ensure_available(payload.model)
-    except (ModelUnavailableError, ModelProviderError) as exc:
-        _raise_for_model_error(exc)
-    updated = await chats.update(chat, model=payload.model)
+    """Update a chat's title, model, and/or favorite flag; 404 if not owned.
+
+    The model, when provided, is validated against the live provider list first
+    (409 unavailable / 502 provider down). Title and favorite need no validation.
+    """
+    if payload.model is not None:
+        try:
+            await agent.ensure_available(payload.model)
+        except (ModelUnavailableError, ModelProviderError) as exc:
+            _raise_for_model_error(exc)
+    updated = await chats.update(chat, **payload.model_dump(exclude_none=True))
     return ChatOut.model_validate(updated)
 
 
@@ -157,6 +172,10 @@ async def send_message(
                         "done",
                         {"message_id": event.message_id, "usage": event.usage},
                     )
+            if not history:  # first turn → derive a title without delaying the answer
+                title = await service.generate_title(chat_id, payload.content)
+                if title:
+                    yield _sse("title", {"title": title})
         except Exception:  # surface a generic SSE error, never a broken stream
             logger.exception("chat stream failed for chat %s", chat_id)
             yield _sse("error", {"message": "Internal server error while streaming the reply"})
@@ -195,9 +214,7 @@ async def regenerate_message(
 
     async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(
-                chat_id, model, last_user_content, history
-            ):
+            async for event in service.stream_turn(chat_id, model, last_user_content, history):
                 if isinstance(event, Delta):
                     yield _sse("delta", {"text": event.text})
                 elif isinstance(event, Done):

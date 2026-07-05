@@ -18,6 +18,31 @@ from pydantic_ai.models import Model
 from capybara.config import Settings
 from capybara.db.models import Message
 
+#: System prompt used to derive a short chat title from the first user message.
+TITLE_SYSTEM_PROMPT = (
+    "You generate a concise chat title of 3-5 words in the same language as the "
+    "user's message. Reply with the title only — no quotes, no punctuation at the "
+    "end, no preamble."
+)
+
+#: Maximum length of a generated/fallback title, matching ``chats.title``.
+_TITLE_MAX = 200
+
+
+def _clean_title(raw: str, *, fallback: str) -> str:
+    """Normalise a model-produced title; fall back to a truncation of *fallback* if empty.
+
+    Takes the first line, strips surrounding quotes and whitespace, collapses inner
+    whitespace, and truncates to ``_TITLE_MAX``. If nothing usable remains, returns the
+    first line of *fallback* truncated the same way.
+    """
+    first_line = raw.strip().splitlines()[0] if raw.strip() else ""
+    cleaned = " ".join(first_line.strip("\"'«»`“” \t").split())[:_TITLE_MAX]
+    if cleaned:
+        return cleaned
+    fb_line = fallback.strip().splitlines()[0] if fallback.strip() else fallback.strip()
+    return " ".join(fb_line.split())[:_TITLE_MAX]
+
 
 class ModelUnavailableError(Exception):
     """Raised when a chat's model is unset or not present in the provider's live list."""
@@ -106,3 +131,18 @@ class BaseAgent(ABC):
             run_usage = result.usage
             acc.usage = {"total_tokens": run_usage.total_tokens} if run_usage.has_values() else None
             acc.model = result.response.model_name
+
+    async def generate_title(self, model_name: str, first_user_message: str) -> str:
+        """Ask the model for a short chat title; never raises.
+
+        On any failure or empty output, falls back to a truncation of the user message,
+        so the returned title is always at least as good as the default.
+        """
+        try:
+            agent: Agent[None, str] = Agent(
+                self._build_model(model_name), system_prompt=TITLE_SYSTEM_PROMPT
+            )
+            result = await agent.run(first_user_message)
+            return _clean_title(result.output, fallback=first_user_message)
+        except Exception:  # title generation must never break the reply flow
+            return _clean_title("", fallback=first_user_message)
