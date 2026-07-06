@@ -6,10 +6,12 @@
  * User messages render as right-aligned bubbles; assistant messages render with the CapyLogo
  * glyph, markdown content (via MarkdownText → MarkdownTextPrimitive), and a hover action bar.
  */
-import { ThreadPrimitive, MessagePrimitive, ActionBarPrimitive } from '@assistant-ui/react'
+import { ThreadPrimitive, MessagePrimitive, ActionBarPrimitive, useMessage } from '@assistant-ui/react'
 import { ArrowDown, Copy, RefreshCw } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { MarkdownText } from './MessageMarkdown'
+import { ToolCallCard } from './ToolCallCard'
+import { MemorySaveChip } from './MemorySaveChip'
 import styles from './Thread.module.css'
 
 /**
@@ -40,6 +42,24 @@ function TypingIndicator() {
 }
 
 /**
+ * Reads memorySaves from the current message's metadata and renders a MemorySaveChip.
+ *
+ * Placed as a named subcomponent so it can call useMessage (a hook) inside the
+ * MessagePrimitive.Root context that provides the message store.
+ */
+function MemorySaves() {
+  const saves = useMessage(
+    (m) =>
+      (
+        m.metadata?.custom as
+          | { memorySaves?: { content: string; category: string }[] }
+          | undefined
+      )?.memorySaves ?? [],
+  )
+  return <MemorySaveChip saves={saves} />
+}
+
+/**
  * Assistant message: CapyLogo avatar + markdown content + hover action bar (Copy / Reload).
  *
  * Passes MarkdownText as the Text renderer so that MarkdownTextPrimitive reads the message
@@ -58,7 +78,9 @@ function AssistantMessage() {
         <CapyLogo size={20} />
       </div>
       <div className={styles.assistantContent}>
-        <MessagePrimitive.Content components={{ Text: MarkdownText }} />
+        <MessagePrimitive.Content
+          components={{ Text: MarkdownText, tools: { Fallback: ToolCallCard } }}
+        />
         <MessagePrimitive.If last hasContent={false}>
           <TypingIndicator />
         </MessagePrimitive.If>
@@ -77,6 +99,7 @@ function AssistantMessage() {
             </MessagePrimitive.If>
           </ActionBarPrimitive.Root>
         </MessagePrimitive.If>
+        <MemorySaves />
       </div>
     </MessagePrimitive.Root>
   )

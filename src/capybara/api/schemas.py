@@ -1,7 +1,7 @@
 """Pydantic request/response schemas for the chat, memory, user, and auth APIs."""
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -112,6 +112,22 @@ class MessageCreate(BaseModel):
         return _reject_blank_text(value)
 
 
+class ToolCallOut(BaseModel):
+    """Response schema for a single tool invocation within an assistant message."""
+
+    id: str
+    name: str
+    args: dict[str, Any]
+    result: str | None
+
+
+class MemorySaveOut(BaseModel):
+    """Response schema for a single fact auto-captured from an assistant turn."""
+
+    content: str
+    category: str
+
+
 class MessageOut(BaseModel):
     """Response schema for a single message."""
 
@@ -123,6 +139,8 @@ class MessageOut(BaseModel):
     model: str | None
     incomplete: bool
     created_at: datetime
+    tool_calls: list[ToolCallOut] | None = None
+    memory_saves: list[MemorySaveOut] | None = None
 
 
 class ChatOut(BaseModel):

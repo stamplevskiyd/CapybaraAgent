@@ -19,6 +19,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     app.state.sessionmaker = create_sessionmaker(engine)
     app.state.agent = OllamaAgent(settings)
+    from capybara.services.event_bus import EventBus
+
+    app.state.event_bus = EventBus()
     try:
         yield
     finally:
@@ -28,10 +31,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application with all routers."""
     fastapi_app = FastAPI(title="CapybaraAgent", lifespan=lifespan)
-    from capybara.api.routers import auth, chats, health, memory, models, users
+    from capybara.api.routers import auth, chats, events, health, memory, models, users
 
     fastapi_app.include_router(health.router)
     fastapi_app.include_router(chats.router)
+    fastapi_app.include_router(events.router)
     fastapi_app.include_router(memory.router)
     fastapi_app.include_router(models.router)
     fastapi_app.include_router(users.router)

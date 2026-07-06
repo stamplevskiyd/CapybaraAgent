@@ -58,7 +58,10 @@ export function UserCard() {
         <ChevronUp
           size={14}
           className={styles.userChevron}
-          style={{ transform: open ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.15s ease' }}
+          style={{
+            transform: open ? 'rotate(0deg)' : 'rotate(180deg)',
+            transition: 'transform 0.15s ease',
+          }}
         />
       </button>
     </div>

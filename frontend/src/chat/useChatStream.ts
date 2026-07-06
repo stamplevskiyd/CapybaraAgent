@@ -3,6 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApiClient } from '../auth/AuthContext'
 import { parseSse } from '../api/sse'
 import { getChat } from './chatApi'
+import { applyMemorySave, type MemorySaveEvent } from './memorySave'
+
+export type ToolCallState = {
+  id: string
+  name: string
+  args: Record<string, unknown>
+  result?: string
+  running: boolean
+}
 
 export type ChatMessage = {
   id: string
@@ -10,6 +19,8 @@ export type ChatMessage = {
   content: string
   streaming: boolean
   error?: boolean
+  toolCalls?: ToolCallState[]
+  memorySaves?: { content: string; category: string }[]
 }
 
 let counter = 0
@@ -46,6 +57,36 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
   // Abort on unmount (e.g. logout) so a backgrounded stream never updates a dead component.
   useEffect(() => () => abortRef.current?.abort(), [])
 
+  // Open the per-user push channel once for the lifetime of this screen. It delivers
+  // background events (currently memory-save) that arrive after a reply's own stream has
+  // closed. Best-effort: a missed event is restored on the next history load.
+  useEffect(() => {
+    const controller = new AbortController()
+    let stopped = false
+    ;(async () => {
+      while (!stopped) {
+        try {
+          const res = await api.eventStream('/events', controller.signal)
+          if (!res.body) throw new Error('no stream')
+          for await (const ev of parseSse(res.body, controller.signal)) {
+            if (ev.event === 'memory-save') {
+              const evt = JSON.parse(ev.data) as MemorySaveEvent
+              setMessages((prev) => applyMemorySave(prev, evt))
+            }
+          }
+        } catch {
+          if (stopped || controller.signal.aborted) return
+        }
+        if (stopped) return
+        await new Promise((r) => setTimeout(r, 2000)) // backoff before reconnect
+      }
+    })()
+    return () => {
+      stopped = true
+      controller.abort()
+    }
+  }, [api])
+
   /** Loads the chat history and initializes the message list. */
   const loadHistory = useCallback(async () => {
     if (!chatId) {
@@ -61,6 +102,16 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
           role: m.role === 'user' ? 'user' : 'assistant',
           content: m.content,
           streaming: false,
+          toolCalls: m.tool_calls
+            ? m.tool_calls.map((t) => ({
+                id: t.id,
+                name: t.name,
+                args: t.args,
+                result: t.result ?? undefined,
+                running: false,
+              }))
+            : undefined,
+          memorySaves: m.memory_saves ?? undefined,
         })),
       )
     } finally {
@@ -88,6 +139,10 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
     async (targetChatId: string, assistantId: string, url: string, body: unknown) => {
       const patch = (fn: (m: ChatMessage) => ChatMessage) =>
         setMessages((prev) => prev.map((m) => (m.id === assistantId ? fn(m) : m)))
+      const settleToolCalls = (m: ChatMessage): ChatMessage => ({
+        ...m,
+        toolCalls: m.toolCalls?.map((t) => (t.running ? { ...t, running: false } : t)),
+      })
       const controller = new AbortController()
       abortRef.current = controller
       streamingChatIdRef.current = targetChatId
@@ -108,19 +163,38 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
           } else if (ev.event === 'title') {
             const { title } = JSON.parse(ev.data) as { title: string }
             onTitleRef.current?.(title)
+          } else if (ev.event === 'tool-call') {
+            const tc = JSON.parse(ev.data) as { id: string; name: string; args: Record<string, unknown> }
+            patch((m) => ({
+              ...m,
+              toolCalls: [...(m.toolCalls ?? []), { ...tc, running: true }],
+            }))
+          } else if (ev.event === 'tool-result') {
+            const { id, result } = JSON.parse(ev.data) as { id: string; result: string }
+            patch((m) => ({
+              ...m,
+              toolCalls: (m.toolCalls ?? []).map((t) =>
+                t.id === id ? { ...t, result, running: false } : t,
+              ),
+            }))
           }
         }
         // reader.cancel() from abort causes the loop to exit without throwing;
         // settle the message if that's what happened.
         if (controller.signal.aborted) {
-          patch((m) => ({ ...m, streaming: false }))
+          patch((m) => settleToolCalls({ ...m, streaming: false }))
         }
       } catch (err) {
         if (controller.signal.aborted) {
           // fetch itself was aborted before the response body started
-          patch((m) => ({ ...m, streaming: false }))
+          patch((m) => settleToolCalls({ ...m, streaming: false }))
         } else {
-          patch((m) => ({ ...m, streaming: false, error: true, content: 'Ошибка при получении ответа.' }))
+          patch((m) => ({
+            ...settleToolCalls(m),
+            streaming: false,
+            error: true,
+            content: 'Ошибка при получении ответа.',
+          }))
         }
       } finally {
         // Only settle shared state if we're still the active stream — a newer send

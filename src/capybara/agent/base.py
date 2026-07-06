@@ -1,16 +1,22 @@
 """Abstract base agent, error types, and reply accumulator for LLM streaming."""
 
+import json
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic_ai import Agent, Tool
 from pydantic_ai.messages import (
+    FunctionToolCallEvent,
+    FunctionToolResultEvent,
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    PartDeltaEvent,
+    PartStartEvent,
     TextPart,
+    TextPartDelta,
     UserPromptPart,
 )
 from pydantic_ai.models import Model
@@ -87,12 +93,77 @@ class EmbeddingModelUnavailableError(Exception):
 
 
 @dataclass
+class StreamedText:
+    """A streamed text delta from the model."""
+
+    text: str
+
+
+@dataclass
+class StreamedToolCall:
+    """A tool invocation observed mid-run, before its result is known."""
+
+    id: str
+    name: str
+    args: dict[str, Any]
+
+
+@dataclass
+class StreamedToolResult:
+    """The result of a previously streamed tool call, matched by ``id``."""
+
+    id: str
+    result: str
+
+
+#: What ``BaseAgent.stream_reply`` yields: interleaved text and tool events.
+AgentStreamEvent = StreamedText | StreamedToolCall | StreamedToolResult
+
+
+def _coerce_tool_args(args: object) -> dict[str, Any]:
+    """Normalise pydantic-ai tool-call args (dict or JSON string) to a dict.
+
+    Returns an empty dict for anything that is not a dict and does not parse as a
+    JSON object, so the UI always receives a well-formed args object.
+    """
+    if isinstance(args, dict):
+        return args
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+        except ValueError, TypeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _text_of(event: object) -> str:
+    """Extract streamed text from a model-request-node event, or '' if none.
+
+    Handles both the initial ``PartStartEvent`` for a ``TextPart`` and subsequent
+    ``PartDeltaEvent`` ``TextPartDelta`` updates; non-text parts (e.g. tool calls) yield ''.
+    """
+    if isinstance(event, PartStartEvent) and isinstance(event.part, TextPart):
+        return event.part.content
+    if isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+        return event.delta.content_delta
+    return ""
+
+
+def _coerce_tool_result(part: object) -> str:
+    """Render a tool return/retry part's content as a string for the UI."""
+    content = getattr(part, "content", "")
+    return content if isinstance(content, str) else str(content)
+
+
+@dataclass
 class ReplyAccumulator:
-    """Accumulate streaming text, usage stats, and model name from a single run."""
+    """Accumulate streaming text, usage stats, model name, and tool calls from a run."""
 
     text: str = ""
     usage: dict[str, Any] | None = None
     model: str | None = None
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
 
 class BaseAgent(ABC):
@@ -166,11 +237,14 @@ class BaseAgent(ABC):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools: Sequence[Tool[None]] = (),
-    ) -> AsyncIterator[str]:
-        """Stream token deltas for the named model and accumulate the reply into acc.
+    ) -> AsyncIterator[AgentStreamEvent]:
+        """Stream text and tool events for the named model, accumulating into acc.
 
-        When *tools* are supplied the chat system prompt (with the recall nudge) is set;
-        with no tools the prompt is left empty so behaviour is unchanged.
+        Uses ``agent.iter()`` so tool calls and their results are observable and can be
+        surfaced to the UI. Text deltas fill ``acc.text``; each completed tool call is
+        appended to ``acc.tool_calls`` as ``{"id", "name", "args", "result"}`` for
+        persistence. When *tools* are supplied the chat system prompt (recall nudge) is
+        set; with no tools the prompt is left empty so behaviour is unchanged.
         """
         tool_list = list(tools)
         agent: Agent[None, str] = Agent(
@@ -178,13 +252,47 @@ class BaseAgent(ABC):
             system_prompt=CHAT_SYSTEM_PROMPT if tool_list else (),
             tools=tool_list,
         )
-        async with agent.run_stream(user_content, message_history=history) as result:
-            async for text in result.stream_text(delta=True):
-                acc.text += text
-                yield text
-            run_usage = result.usage
+        # tool_call_id → index into acc.tool_calls, so a result can patch its call.
+        pending: dict[str, int] = {}
+        async with agent.iter(user_content, message_history=history) as run:
+            async for node in run:
+                if Agent.is_model_request_node(node):
+                    async with node.stream(run.ctx) as request_stream:
+                        async for text_event in request_stream:
+                            text = _text_of(text_event)
+                            if text:
+                                acc.text += text
+                                yield StreamedText(text=text)
+                elif Agent.is_call_tools_node(node):
+                    async with node.stream(run.ctx) as tool_stream:
+                        async for tool_event in tool_stream:
+                            if isinstance(tool_event, FunctionToolCallEvent):
+                                args = _coerce_tool_args(tool_event.part.args)
+                                pending[tool_event.part.tool_call_id] = len(acc.tool_calls)
+                                acc.tool_calls.append(
+                                    {
+                                        "id": tool_event.part.tool_call_id,
+                                        "name": tool_event.part.tool_name,
+                                        "args": args,
+                                        "result": None,
+                                    }
+                                )
+                                yield StreamedToolCall(
+                                    id=tool_event.part.tool_call_id,
+                                    name=tool_event.part.tool_name,
+                                    args=args,
+                                )
+                            elif isinstance(tool_event, FunctionToolResultEvent):
+                                result = _coerce_tool_result(tool_event.part)
+                                idx = pending.get(tool_event.tool_call_id)
+                                if idx is not None:
+                                    acc.tool_calls[idx]["result"] = result
+                                yield StreamedToolResult(id=tool_event.tool_call_id, result=result)
+        final = run.result
+        if final is not None:
+            run_usage = final.usage
             acc.usage = {"total_tokens": run_usage.total_tokens} if run_usage.has_values() else None
-            acc.model = result.response.model_name
+            acc.model = final.response.model_name
 
     async def generate_title(self, model_name: str, first_user_message: str) -> str:
         """Ask the model for a short chat title; never raises.

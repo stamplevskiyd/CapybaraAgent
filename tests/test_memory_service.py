@@ -1,9 +1,15 @@
+import asyncio
+
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from capybara.config import Settings
 from capybara.db.engine import create_sessionmaker
+from capybara.db.models import User
+from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.fact_repo import FactRepo
+from capybara.repositories.message_repo import MessageRepo
+from capybara.services.event_bus import EventBus
 from capybara.services.memory_service import MemoryService
 from support import StubMemoryAgent
 
@@ -92,3 +98,66 @@ async def test_auto_capture_flag_roundtrip(
     assert await service.get_auto_capture(user_id) is True
     assert await service.set_auto_capture(user_id, False) is False
     assert await service.get_auto_capture(user_id) is False
+
+
+async def test_extract_and_store_publishes_and_persists(engine, settings, user_id) -> None:  # type: ignore[no-untyped-def]
+    """A stored fact is written to the message's memory_saves AND published on the bus."""
+    maker = create_sessionmaker(engine)
+    agent = StubMemoryAgent(
+        settings, extracted={"facts": [{"content": "Любит чай", "category": "preference"}]}
+    )
+    bus = EventBus()
+    service = MemoryService(maker, agent, settings, bus)
+
+    async with maker() as s:
+        user = await s.get(User, user_id)
+        assert user is not None
+        user.memory_auto_capture = True
+        chat = await ChatRepo(s).create(user_id, "c", "test-model")
+        messages = MessageRepo(s)
+        await messages.create(chat_id=chat.id, role="user", content="Привет")
+        assistant = await messages.create(chat_id=chat.id, role="assistant", content="Здравствуй")
+        await s.commit()
+        chat_id, assistant_id = chat.id, assistant.id
+
+    async with bus.subscribe(user_id) as queue:
+        await service.extract_and_store(user_id, chat_id)
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+
+    assert event["event"] == "memory-save"
+    assert event["data"]["chat_id"] == str(chat_id)
+    assert event["data"]["message_id"] == str(assistant_id)
+    assert event["data"]["facts"] == [{"content": "Любит чай", "category": "preference"}]
+
+    async with maker() as s:
+        stored = await MessageRepo(s).get(assistant_id)
+        assert stored is not None
+        assert stored.memory_saves == [{"content": "Любит чай", "category": "preference"}]
+
+
+async def test_extract_and_store_no_facts_publishes_nothing(engine, settings, user_id) -> None:  # type: ignore[no-untyped-def]
+    """When extraction yields no facts, nothing is persisted or published."""
+    maker = create_sessionmaker(engine)
+    agent = StubMemoryAgent(settings, extracted={"facts": []})
+    bus = EventBus()
+    service = MemoryService(maker, agent, settings, bus)
+
+    async with maker() as s:
+        user = await s.get(User, user_id)
+        assert user is not None
+        user.memory_auto_capture = True
+        chat = await ChatRepo(s).create(user_id, "c", "test-model")
+        messages = MessageRepo(s)
+        await messages.create(chat_id=chat.id, role="user", content="Привет")
+        assistant = await messages.create(chat_id=chat.id, role="assistant", content="Здравствуй")
+        await s.commit()
+        chat_id, assistant_id = chat.id, assistant.id
+
+    async with bus.subscribe(user_id) as queue:
+        await service.extract_and_store(user_id, chat_id)
+        assert queue.empty()
+
+    async with maker() as s:
+        stored = await MessageRepo(s).get(assistant_id)
+        assert stored is not None
+        assert stored.memory_saves is None

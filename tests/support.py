@@ -5,7 +5,7 @@ from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
 from pydantic_ai.models.test import TestModel
 
-from capybara.agent.base import BaseAgent, ReplyAccumulator
+from capybara.agent.base import BaseAgent, ReplyAccumulator, StreamedText
 from capybara.config import Settings
 
 
@@ -52,10 +52,10 @@ class RaisingAgent(BaseAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[StreamedText]:
         """Raise immediately; the trailing yield only marks this as a generator."""
         raise RuntimeError(self._message)
-        yield ""  # pragma: no cover
+        yield StreamedText(text="")  # pragma: no cover
 
 
 class PartialThenFailAgent(BaseAgent):
@@ -82,10 +82,10 @@ class PartialThenFailAgent(BaseAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
-    ) -> AsyncIterator[str]:
+    ) -> AsyncIterator[StreamedText]:
         """Yield one accumulated delta, then raise to abort the stream."""
         acc.text += self._partial
-        yield self._partial
+        yield StreamedText(text=self._partial)
         raise RuntimeError(self._message)
 
 
@@ -137,3 +137,55 @@ class ToolCallingFakeAgent(FakeAgent):
 
     def _build_model(self, name: str) -> Model:
         return TestModel(custom_output_text=self._output_text)  # call_tools defaults to "all"
+
+
+class EmptyReplyAgent(FakeAgent):
+    """Faithfully simulate a successful but empty model reply.
+
+    ``TestModel("")`` cannot represent an empty-successful reply under ``agent.iter()``:
+    it produces no output and the agent graph raises ``UnexpectedModelBehavior``.
+    This fake overrides ``stream_reply`` to yield zero events and return normally,
+    leaving ``acc.text == ""`` and setting ``acc.model = "test"`` so
+    ``ChatService.stream_turn`` completes and emits ``Done(message_id=None)``.
+    """
+
+    async def stream_reply(
+        self,
+        model_name: str,
+        user_content: str,
+        history: list[ModelMessage],
+        acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
+    ) -> AsyncIterator[StreamedText]:
+        """Yield zero events; return normally to model a successful empty reply."""
+        acc.model = "test"
+        return
+        yield StreamedText(text="")  # pragma: no cover
+
+
+class ScriptedToolAgent(FakeAgent):
+    """Agent whose stream yields a fixed tool-call → tool-result → text sequence.
+
+    Lets service and router tests exercise tool-event mapping and persistence
+    deterministically, independent of TestModel's tool-calling behaviour.
+    """
+
+    async def stream_reply(  # type: ignore[override]
+        self,
+        model_name: str,
+        user_content: str,
+        history,  # type: ignore[no-untyped-def]
+        acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
+    ):
+        """Yield one tool call, its result, then the configured text."""
+        from capybara.agent.base import StreamedToolCall, StreamedToolResult
+
+        args = {"query": "любимое"}
+        acc.tool_calls.append({"id": "call-1", "name": "recall", "args": args, "result": None})
+        yield StreamedToolCall(id="call-1", name="recall", args=args)
+        acc.tool_calls[0]["result"] = "- [personal] походы"
+        yield StreamedToolResult(id="call-1", result="- [personal] походы")
+        acc.text += self._output_text
+        yield StreamedText(text=self._output_text)
+        acc.model = "test"

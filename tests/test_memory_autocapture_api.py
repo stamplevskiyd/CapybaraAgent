@@ -72,6 +72,21 @@ async def test_send_message_auto_captures_fact(client: AsyncClient) -> None:
     assert facts[0]["source"] == "auto"
 
 
+async def test_send_message_persists_memory_saves_on_message(client: AsyncClient) -> None:
+    """After the background task runs, the assistant message carries memory_saves."""
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+    async with client.stream(
+        "POST", f"/chats/{chat_id}/messages", json={"content": "Привет"}
+    ) as resp:
+        assert resp.status_code == 200
+        async for _ in resp.aiter_text():
+            pass
+
+    detail = (await client.get(f"/chats/{chat_id}")).json()
+    assistant = [m for m in detail["messages"] if m["role"] == "assistant"][-1]
+    assert assistant["memory_saves"] == [{"content": "Любит чай", "category": "preference"}]
+
+
 async def test_regenerate_does_not_auto_capture(client: AsyncClient) -> None:
     """POST /chats/{id}/messages/regenerate does NOT attach a BackgroundTask."""
     chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]

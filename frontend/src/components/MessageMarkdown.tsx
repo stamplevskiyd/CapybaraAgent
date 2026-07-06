@@ -9,7 +9,10 @@
  * same rendering behaviour can be unit-tested without a full assistant-ui runtime.
  */
 import React from 'react'
-import { MarkdownTextPrimitive, type MarkdownTextPrimitiveProps } from '@assistant-ui/react-markdown'
+import {
+  MarkdownTextPrimitive,
+  type MarkdownTextPrimitiveProps,
+} from '@assistant-ui/react-markdown'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize from 'rehype-sanitize'
@@ -31,7 +34,14 @@ import styles from './MessageMarkdown.module.css'
  */
 const markdownComponents: NonNullable<MarkdownTextPrimitiveProps['components']> = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code({ className, children }: { className?: string; children?: React.ReactNode; [key: string]: any }) {
+  code({
+    className,
+    children,
+  }: {
+    className?: string
+    children?: React.ReactNode
+    [key: string]: any
+  }) {
     const lang = /language-(\w+)/.exec(className ?? '')?.[1]
     const text = String(children ?? '')
     // Fenced blocks carry a language class or end with a newline; inline code does not.

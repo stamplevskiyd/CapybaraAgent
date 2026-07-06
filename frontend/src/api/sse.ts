@@ -11,7 +11,9 @@ export async function* parseSse(
   signal?: AbortSignal,
 ): AsyncGenerator<SseEvent> {
   const reader = stream.getReader()
-  const onAbort = () => { reader.cancel() }
+  const onAbort = () => {
+    reader.cancel()
+  }
   signal?.addEventListener('abort', onAbort, { once: true })
   const decoder = new TextDecoder()
   let buffer = ''

@@ -21,14 +21,14 @@ npm install
 
 ## Scripts
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Start dev server with Vite proxy on `:5173` |
-| `npm run build` | Type-check then compile to `dist/` |
-| `npm run test` | Run Vitest test suite (single pass) |
-| `npm run lint` | ESLint with zero-warning policy |
-| `npm run typecheck` | TypeScript type-check without emitting |
-| `npm run preview` | Serve the production build locally |
+| Command             | What it does                                |
+| ------------------- | ------------------------------------------- |
+| `npm run dev`       | Start dev server with Vite proxy on `:5173` |
+| `npm run build`     | Type-check then compile to `dist/`          |
+| `npm run test`      | Run Vitest test suite (single pass)         |
+| `npm run lint`      | ESLint with zero-warning policy             |
+| `npm run typecheck` | TypeScript type-check without emitting      |
+| `npm run preview`   | Serve the production build locally          |
 
 ---
 

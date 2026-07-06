@@ -2,7 +2,11 @@ import { describe, expect, test, vi } from 'vitest'
 import { createChat, listModels, patchChatModel } from './chatApi'
 import type { ApiClient } from '../api/client'
 
-function fakeApi(): ApiClient & { get: ReturnType<typeof vi.fn>; post: ReturnType<typeof vi.fn>; patch: ReturnType<typeof vi.fn> } {
+function fakeApi(): ApiClient & {
+  get: ReturnType<typeof vi.fn>
+  post: ReturnType<typeof vi.fn>
+  patch: ReturnType<typeof vi.fn>
+} {
   return {
     get: vi.fn().mockResolvedValue({ provider: 'ollama', models: ['llama3.1:8b'] }),
     post: vi.fn().mockResolvedValue({ id: 'c1' }),

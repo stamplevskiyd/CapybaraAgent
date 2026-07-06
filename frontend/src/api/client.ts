@@ -14,6 +14,7 @@ export interface ApiClient {
   patch<T>(path: string, body?: unknown): Promise<T>
   del(path: string): Promise<void>
   stream(path: string, body: unknown, signal?: AbortSignal): Promise<Response>
+  eventStream(path: string, signal?: AbortSignal): Promise<Response>
 }
 
 export function createApiClient(opts: {
@@ -66,5 +67,6 @@ export function createApiClient(opts: {
         body: JSON.stringify(body),
         signal,
       }),
+    eventStream: (path, signal) => stream(path, { method: 'GET', signal }),
   }
 }

@@ -33,9 +33,7 @@ test('streams assistant deltas into a message', async () => {
 })
 
 test('a pre-stream error does not leave the assistant bubble streaming', async () => {
-  server.use(
-    http.post('/api/chats/c1/messages', () => new HttpResponse('gone', { status: 404 })),
-  )
+  server.use(http.post('/api/chats/c1/messages', () => new HttpResponse('gone', { status: 404 })))
   const { result } = renderHook(() => useChatStream('c1'), { wrapper })
   await act(async () => {
     await result.current.send('Привет')
@@ -59,9 +57,15 @@ test('cancel stops an in-flight stream and settles the message', async () => {
     }),
   )
   const { result } = renderHook(() => useChatStream('c1'), { wrapper })
-  act(() => { void result.current.send('Привет') })
-  await waitFor(() => expect(result.current.messages.some((m) => m.content === 'partial')).toBe(true))
-  act(() => { result.current.cancel() })
+  act(() => {
+    void result.current.send('Привет')
+  })
+  await waitFor(() =>
+    expect(result.current.messages.some((m) => m.content === 'partial')).toBe(true),
+  )
+  act(() => {
+    result.current.cancel()
+  })
   await waitFor(() => expect(result.current.sending).toBe(false))
   const assistant = result.current.messages.find((m) => m.role === 'assistant')!
   expect(assistant.streaming).toBe(false)
@@ -123,8 +127,9 @@ test('sending clears on done even when a title frame trails it', async () => {
     },
   })
   server.use(
-    http.post('/api/chats/c1/messages', () =>
-      new HttpResponse(stream, { headers: { 'Content-Type': 'text/event-stream' } }),
+    http.post(
+      '/api/chats/c1/messages',
+      () => new HttpResponse(stream, { headers: { 'Content-Type': 'text/event-stream' } }),
     ),
   )
   const onTitle = vi.fn()
@@ -142,15 +147,106 @@ test('sending clears on done even when a title frame trails it', async () => {
   await waitFor(() => expect(onTitle).toHaveBeenCalledWith('Про капибар'))
 })
 
+test('tracks tool-call state through running and result frames', async () => {
+  server.use(
+    http.post('/api/chats/c1/messages', () => {
+      const body =
+        'event: tool-call\ndata: {"id":"t1","name":"recall","args":{"query":"хобби"}}\n\n' +
+        'event: tool-result\ndata: {"id":"t1","result":"- [personal] походы"}\n\n' +
+        'event: delta\ndata: {"text":"Вы любите походы"}\n\n' +
+        'event: done\ndata: {"message_id":"m1"}\n\n'
+      return new HttpResponse(body, { headers: { 'Content-Type': 'text/event-stream' } })
+    }),
+  )
+  const { result } = renderHook(() => useChatStream('c1'), { wrapper })
+  await act(async () => {
+    await result.current.send('Что я люблю?')
+  })
+  await waitFor(() => expect(result.current.sending).toBe(false))
+  const assistant = result.current.messages.find((m) => m.role === 'assistant')!
+  expect(assistant.toolCalls).toHaveLength(1)
+  expect(assistant.toolCalls![0]).toMatchObject({
+    id: 't1',
+    name: 'recall',
+    args: { query: 'хобби' },
+    result: '- [personal] походы',
+    running: false,
+  })
+  expect(assistant.content).toBe('Вы любите походы')
+})
+
+test('applies a memory-save event from /events to the matching message', async () => {
+  // Use a controllable ReadableStream so we push the memory-save event only after
+  // loadHistory has had a chance to populate messages with stable backend ids.
+  let pushEvent!: (chunk: string) => void
+  const eventsStream = new ReadableStream({
+    start(controller) {
+      pushEvent = (chunk) => controller.enqueue(new TextEncoder().encode(chunk))
+      // Stream is intentionally kept open (no close) to prevent the reconnect
+      // back-off loop from running inside the test.
+    },
+  })
+
+  server.use(
+    http.get('/api/events', () =>
+      new HttpResponse(eventsStream, { headers: { 'Content-Type': 'text/event-stream' } }),
+    ),
+    http.get('/api/chats/c1', () =>
+      HttpResponse.json({
+        id: 'c1',
+        title: 'Test',
+        model: null,
+        is_favorite: false,
+        created_at: '',
+        updated_at: '',
+        messages: [
+          {
+            id: 'msg-memory-test',
+            role: 'assistant',
+            content: 'Hello',
+            model: null,
+            incomplete: false,
+            created_at: '',
+          },
+        ],
+      }),
+    ),
+  )
+
+  const { result } = renderHook(() => useChatStream('c1'), { wrapper })
+
+  // Populate state with a message that has a stable backend id via loadHistory.
+  await act(async () => {
+    await result.current.loadHistory()
+  })
+
+  expect(result.current.messages.find((m) => m.id === 'msg-memory-test')).toBeDefined()
+
+  // Push the memory-save SSE frame targeting the loaded message.
+  act(() => {
+    pushEvent(
+      'event: memory-save\ndata: {"chat_id":"c1","message_id":"msg-memory-test","facts":[{"content":"Любит чай","category":"preference"}]}\n\n',
+    )
+  })
+
+  // Wait for applyMemorySave to update state.
+  await waitFor(() => {
+    const msg = result.current.messages.find((m) => m.id === 'msg-memory-test')
+    expect(msg?.memorySaves).toEqual([{ content: 'Любит чай', category: 'preference' }])
+  })
+})
+
 test('regenerate calls /messages/regenerate and replaces the last assistant without duplicating the user bubble', async () => {
   let regenerateCalled = false
 
   server.use(
-    http.post('/api/chats/c1/messages', () =>
-      new HttpResponse(
-        'event: delta\ndata: {"text":"Первый ответ"}\n\nevent: done\ndata: {"message_id":"m1"}\n\n',
-        { headers: { 'Content-Type': 'text/event-stream' } },
-      ),
+    http.post(
+      '/api/chats/c1/messages',
+      () =>
+        new HttpResponse(
+          'event: delta\ndata: {"text":"Первый ответ"}\n\nevent: done\ndata: {"message_id":"m1"}\n\n',
+          { headers: { 'Content-Type': 'text/event-stream' } },
+        ),
     ),
     http.post('/api/chats/c1/messages/regenerate', () => {
       regenerateCalled = true
@@ -164,13 +260,17 @@ test('regenerate calls /messages/regenerate and replaces the last assistant with
   const { result } = renderHook(() => useChatStream('c1'), { wrapper })
 
   // Seed: send a message so state has one user + one assistant message.
-  await act(async () => { await result.current.send('Привет') })
+  await act(async () => {
+    await result.current.send('Привет')
+  })
   await waitFor(() => expect(result.current.sending).toBe(false))
 
   const usersBefore = result.current.messages.filter((m) => m.role === 'user').length
 
   // Regenerate: should hit the new endpoint, not re-append a user bubble.
-  await act(async () => { await result.current.regenerate() })
+  await act(async () => {
+    await result.current.regenerate()
+  })
   await waitFor(() => expect(result.current.sending).toBe(false))
 
   // (a) The regenerate endpoint was hit.
