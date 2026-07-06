@@ -70,6 +70,27 @@ class ChatTurnLocks:
         return lock
 
 
+class TurnLockLease:
+    """A held per-chat turn lock with idempotent release.
+
+    A turn's lock is acquired in the request handler but must be releasable from
+    whichever cleanup path actually runs — the SSE generator's ``finally`` on streams
+    that started, or the response object's ``finally`` when the client disconnected
+    before the body was ever pulled — so ``release`` must tolerate repeated calls.
+    """
+
+    def __init__(self, lock: asyncio.Lock) -> None:
+        """Wrap an already-acquired lock."""
+        self._lock = lock
+        self._released = False
+
+    def release(self) -> None:
+        """Release the underlying lock on first call; later calls are no-ops."""
+        if not self._released:
+            self._released = True
+            self._lock.release()
+
+
 class ChatService:
     """Orchestrate a conversation turn: persist user/assistant messages and stream LLM reply."""
 
@@ -87,9 +108,15 @@ class ChatService:
         # the shared registry so locks span concurrent requests.
         self._turn_locks = turn_locks or ChatTurnLocks()
 
-    def turn_lock(self, chat_id: UUID) -> asyncio.Lock:
-        """Return the per-chat lock serializing this chat's turns; held across a full turn."""
-        return self._turn_locks.lock_for(chat_id)
+    async def acquire_turn_lock(self, chat_id: UUID) -> TurnLockLease:
+        """Acquire this chat's turn lock and return an idempotently-releasable lease.
+
+        The lock serializes the chat's turns and is held across a full turn
+        (begin/regenerate → stream → persist).
+        """
+        lock = self._turn_locks.lock_for(chat_id)
+        await lock.acquire()
+        return TurnLockLease(lock)
 
     async def begin_turn(
         self, user_id: UUID, chat_id: UUID, user_content: str

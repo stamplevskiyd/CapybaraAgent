@@ -1,5 +1,6 @@
 import json
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -582,3 +583,91 @@ async def test_send_message_streams_tool_call_frames(
     assert "event: tool-result" in body
     assert '"name": "recall"' in body
     assert "event: delta" in body
+
+
+async def _post_message_disconnected(chat_id: str, *, spec_version: str, send) -> None:  # type: ignore[no-untyped-def]
+    """POST a message to *chat_id* via a raw ASGI call from an already-disconnected client.
+
+    The receive channel yields the JSON body and then only http.disconnect frames;
+    *send* controls how the transport reacts to response bytes (silently discard for
+    the pre-2.4 task-group path, raise OSError for the ASGI >= 2.4 path).
+    """
+    body = json.dumps({"content": "Привет"}).encode()
+    messages = iter(
+        [
+            {"type": "http.request", "body": body, "more_body": False},
+            {"type": "http.disconnect"},
+        ]
+    )
+
+    async def receive():  # type: ignore[no-untyped-def]
+        return next(messages, {"type": "http.disconnect"})
+
+    path = f"/chats/{chat_id}/messages"
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": spec_version},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "query_string": b"",
+        "root_path": "",
+        "headers": [
+            (b"host", b"test"),
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode()),
+        ],
+        "client": ("127.0.0.1", 1234),
+        "server": ("test", 80),
+    }
+    await app(scope, receive, send)
+
+
+async def test_send_message_releases_turn_lock_on_disconnect_before_streaming(
+    client: AsyncClient,
+) -> None:
+    """Task-group path (ASGI < 2.4): an early disconnect must not leak the turn lock.
+
+    Starlette cancels the streaming task, but anyio only delivers cancellation to tasks
+    that have started, so the body generator always begins and its finally releases the
+    lock. Pinned so a change in that scheduling behaviour surfaces as a leak here.
+    """
+    from uuid import UUID
+
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+
+    async def send(message):  # type: ignore[no-untyped-def]
+        pass
+
+    await _post_message_disconnected(chat_id, spec_version="2.0", send=send)
+
+    locks = app.state.chat_turn_locks
+    assert not locks.lock_for(UUID(chat_id)).locked()
+
+
+async def test_send_message_releases_turn_lock_when_send_raises_before_streaming(
+    client: AsyncClient,
+) -> None:
+    """ASGI >= 2.4 path: send() raising on a dead client must not leak the turn lock.
+
+    Here Starlette calls stream_response directly; the OSError from sending the response
+    headers surfaces as ClientDisconnect *before the body generator is ever started*, so
+    no finally inside it can run and the background task is skipped too. The response
+    object itself must guarantee the release, or the chat deadlocks forever.
+    """
+    from uuid import UUID
+
+    from starlette.requests import ClientDisconnect
+
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+
+    async def send(message):  # type: ignore[no-untyped-def]
+        raise OSError("client disconnected")
+
+    with pytest.raises(ClientDisconnect):
+        await _post_message_disconnected(chat_id, spec_version="2.4", send=send)
+
+    locks = app.state.chat_turn_locks
+    assert not locks.lock_for(UUID(chat_id)).locked()
