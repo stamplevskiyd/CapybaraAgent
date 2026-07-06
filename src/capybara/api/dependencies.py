@@ -197,6 +197,4 @@ def get_chat_service(
     mcp_service: Annotated[McpService, Depends(get_mcp_service)],
 ) -> ChatService:
     """Return a ChatService wired with recall, MCP toolsets, and the shared turn locks."""
-    return ChatService(
-        sessionmaker, agent, memory_service, turn_locks, mcp_service=mcp_service
-    )
+    return ChatService(sessionmaker, agent, memory_service, turn_locks, mcp_service=mcp_service)

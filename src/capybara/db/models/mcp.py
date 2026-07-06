@@ -51,9 +51,7 @@ class McpTool(Base, TimestampMixin):
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    server_id: Mapped[UUID] = mapped_column(
-        ForeignKey("mcp_servers.id", ondelete="CASCADE")
-    )
+    server_id: Mapped[UUID] = mapped_column(ForeignKey("mcp_servers.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     input_schema: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

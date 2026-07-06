@@ -12,14 +12,28 @@ def test_mcp_tables_registered_with_expected_columns() -> None:
 
     server_cols = set(tables["mcp_servers"].columns.keys())
     assert {
-        "id", "user_id", "name", "url", "headers", "enabled",
-        "last_connected_at", "last_error", "created_at", "updated_at",
+        "id",
+        "user_id",
+        "name",
+        "url",
+        "headers",
+        "enabled",
+        "last_connected_at",
+        "last_error",
+        "created_at",
+        "updated_at",
     } <= server_cols
 
     tool_cols = set(tables["mcp_tools"].columns.keys())
     assert {
-        "id", "server_id", "name", "description", "input_schema",
-        "enabled", "created_at", "updated_at",
+        "id",
+        "server_id",
+        "name",
+        "description",
+        "input_schema",
+        "enabled",
+        "created_at",
+        "updated_at",
     } <= tool_cols
 
 

@@ -69,7 +69,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(
-            ["server_id"], ["mcp_servers.id"], name="fk_mcp_tools_server_id_mcp_servers",
+            ["server_id"],
+            ["mcp_servers.id"],
+            name="fk_mcp_tools_server_id_mcp_servers",
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_mcp_tools"),

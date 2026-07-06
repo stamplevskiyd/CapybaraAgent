@@ -618,15 +618,10 @@ async def test_stream_turn_surfaces_mcp_toolset_tool(
         async def build_toolsets(self, user_id):  # type: ignore[no-untyped-def]
             return [FunctionToolset([weather]).prefixed("home")]
 
-    service = ChatService(
-        maker, ToolCallingFakeAgent(settings, "Готово"), mcp_service=_FakeMcp()
-    )
+    service = ChatService(maker, ToolCallingFakeAgent(settings, "Готово"), mcp_service=_FakeMcp())
 
     events = [
-        e
-        async for e in service.stream_turn(
-            chat.id, "test-model", "погода?", [], user_id=user.id
-        )
+        e async for e in service.stream_turn(chat.id, "test-model", "погода?", [], user_id=user.id)
     ]
 
     assert any(isinstance(e, ToolCall) and e.name == "home_weather" for e in events)

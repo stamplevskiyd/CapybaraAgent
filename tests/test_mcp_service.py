@@ -26,7 +26,9 @@ def _maker(session: AsyncSession) -> async_sessionmaker[AsyncSession]:
 
 
 async def test_attach_persists_server_and_tools(
-    session: AsyncSession, make_user, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    session: AsyncSession,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     """attach discovers tools and stores the server + enabled tools."""
     user = await make_user(session)
@@ -46,7 +48,9 @@ async def test_attach_persists_server_and_tools(
 
 
 async def test_attach_unreachable_persists_nothing(
-    session: AsyncSession, make_user, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    session: AsyncSession,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     """A failed attach raises and writes no server row."""
     user = await make_user(session)
@@ -63,7 +67,9 @@ async def test_attach_unreachable_persists_nothing(
 
 
 async def test_set_tool_enabled_and_build_toolsets(
-    session: AsyncSession, make_user, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    session: AsyncSession,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     """Disabling a tool drops it; build_toolsets includes only reachable enabled servers."""
     user = await make_user(session)
@@ -92,7 +98,9 @@ async def test_set_tool_enabled_and_build_toolsets(
 
 
 async def test_build_toolsets_skips_unreachable(
-    session: AsyncSession, make_user, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    session: AsyncSession,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     """A server unreachable at turn time is skipped (fail-open), not raised."""
     user = await make_user(session)
@@ -114,7 +122,9 @@ async def test_build_toolsets_skips_unreachable(
 
 
 async def test_refresh_preserves_enabled_flags(
-    session: AsyncSession, make_user, monkeypatch: pytest.MonkeyPatch  # type: ignore[no-untyped-def]
+    session: AsyncSession,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
 ) -> None:
     """refresh keeps a tool's enabled flag by name and adds/removes tools."""
     user = await make_user(session)

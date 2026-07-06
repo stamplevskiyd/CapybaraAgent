@@ -64,10 +64,7 @@ async def test_stream_reply_surfaces_toolset_tool(settings: Settings) -> None:
 
     acc = ReplyAccumulator()
     events = [
-        e
-        async for e in agent.stream_reply(
-            "test-model", "погода?", [], acc, toolsets=[toolset]
-        )
+        e async for e in agent.stream_reply("test-model", "погода?", [], acc, toolsets=[toolset])
     ]
 
     call_names = {e.name for e in events if isinstance(e, StreamedToolCall)}

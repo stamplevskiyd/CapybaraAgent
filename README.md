@@ -102,6 +102,27 @@ trigger migrates to Celery in a later phase). Toggle it on the «Память» 
 **Limitation:** changing `EMBEDDING_MODEL` requires re-embedding existing facts — v1 stores
 no per-row model provenance.
 
+## MCP (remote tool servers)
+
+CapybaraAgent can connect to remote **HTTP/SSE MCP servers** and expose their tools to the
+chat agent alongside built-in tools.
+
+**Attach a server** — `POST /mcp/servers` with JSON `{"name": "…", "url": "…", "headers": {…}}`.
+Pass auth credentials in `headers` (e.g. `"Authorization": "Bearer …"`). On attach the API
+connects to the server, discovers its tools, and stores them — all enabled by default.
+Servers and their headers are **never returned in API responses** (write-only).
+
+**Per-tool curation** — `PATCH /mcp/servers/{id}/tools/{tool_id}` toggles `{"enabled": false}`
+on a tool. Only enabled tools of enabled servers are offered to the chat agent. This is
+useful for large servers (e.g. Home Assistant) whose full tool list confuses local models.
+
+Enabled MCP tools stream through the **same tool-call UI** as built-in tools. If an MCP server
+is unreachable mid-turn it is **silently skipped** — the reply is never broken (fail-open).
+Attach/refresh errors are reported loudly: unreachable → `502`, bad handshake → `400`.
+
+**Limitation:** auth headers are stored **unencrypted** in the database — encryption at rest
+is a TODO for a follow-up slice. Do not store high-value secrets until that lands.
+
 ## Development
 
 ```bash

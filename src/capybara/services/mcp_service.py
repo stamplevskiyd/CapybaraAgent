@@ -184,7 +184,11 @@ class McpService:
                     )
             refreshed_server: McpServer | None = await repo.get(server_id)
             assert refreshed_server is not None  # loaded above under the same ownership check
-            await repo.update(refreshed_server, last_connected_at=datetime.now(UTC), last_error=None)
+            await repo.update(
+                refreshed_server,
+                last_connected_at=datetime.now(UTC),
+                last_error=None,
+            )
             await session.commit()
             return await self._load(session, user_id, server_id)
 
@@ -235,7 +239,7 @@ class McpService:
                 continue
             try:
                 await mcp_adapter.discover(url, headers)
-            except (McpUnreachableError, McpProtocolError):
+            except McpUnreachableError, McpProtocolError:
                 logger.warning("MCP server %r unreachable this turn; skipping its tools", name)
                 continue
             toolsets.append(mcp_adapter.build_toolset(url, headers, enabled_names, _slug(name)))
