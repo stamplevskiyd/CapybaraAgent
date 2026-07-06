@@ -121,6 +121,13 @@ class ToolCallOut(BaseModel):
     result: str | None
 
 
+class MemorySaveOut(BaseModel):
+    """Response schema for a single fact auto-captured from an assistant turn."""
+
+    content: str
+    category: str
+
+
 class MessageOut(BaseModel):
     """Response schema for a single message."""
 
@@ -133,6 +140,7 @@ class MessageOut(BaseModel):
     incomplete: bool
     created_at: datetime
     tool_calls: list[ToolCallOut] | None = None
+    memory_saves: list[MemorySaveOut] | None = None
 
 
 class ChatOut(BaseModel):
