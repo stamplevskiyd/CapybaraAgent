@@ -182,8 +182,9 @@ class McpService:
                         input_schema=d.input_schema,
                         enabled=True,
                     )
-            refreshed_server: McpServer | None = await repo.get(server_id)
-            assert refreshed_server is not None  # loaded above under the same ownership check
+            refreshed_server = await repo.get(server_id)
+            if refreshed_server is None:
+                raise LookupError(f"MCP server {server_id} not found")
             await repo.update(
                 refreshed_server,
                 last_connected_at=datetime.now(UTC),
@@ -212,8 +213,16 @@ class McpService:
     async def build_toolsets(self, user_id: UUID) -> list[AbstractToolset[None]]:
         """Build agent-ready toolsets for the user's enabled servers (enabled tools only).
 
-        Fail-open: each enabled server is reachability-checked via ``discover``; an
-        unreachable server is logged and skipped so a dead server never breaks the turn.
+        Fail-open (preflight boundary): each enabled server is reachability-checked via
+        ``discover`` at the *start* of the turn (preflight). A server that fails this
+        preflight is logged and skipped so a dead server never breaks the reply.
+
+        This guarantee covers only the preflight check. A server that *passes* the preflight
+        but becomes unreachable between the preflight ``discover`` and the pydantic-ai agent
+        run — or that errors during an actual tool call inside the agent — is **not** masked
+        in this slice: the error will propagate through ``stream_reply`` and break the reply.
+        Airtight run-time degradation (e.g. per-call retry, persistent connection pool) is
+        deferred to the future connection-pool slice.
 
         NOTE (known slice-A inefficiency): this reachability check opens a session, and
         pydantic-ai opens another when the agent actually runs the toolset — two

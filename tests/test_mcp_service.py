@@ -121,6 +121,37 @@ async def test_build_toolsets_skips_unreachable(
     assert toolsets == []  # skipped, no exception
 
 
+async def test_refresh_removes_tools_no_longer_reported(
+    session: AsyncSession,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
+) -> None:
+    """refresh drops tools no longer reported by the server, from both return value and DB."""
+    user = await make_user(session, username="refresh_drop")
+
+    async def discover_v1(url, headers):  # type: ignore[no-untyped-def]
+        return [DiscoveredTool("turn_on", "d", {}), DiscoveredTool("turn_off", None, None)]
+
+    monkeypatch.setattr(mcp_adapter, "discover", discover_v1)
+    service = McpService(_maker(session))
+    server, tools = await service.attach(user.id, "home", "http://ha/mcp", {})
+    assert {t.name for t in tools} == {"turn_on", "turn_off"}
+
+    async def discover_v2(url, headers):  # type: ignore[no-untyped-def]
+        return [DiscoveredTool("turn_on", "d", {})]  # turn_off no longer reported
+
+    monkeypatch.setattr(mcp_adapter, "discover", discover_v2)
+    refreshed = await service.refresh(user.id, server.id)
+    assert refreshed is not None
+    _server, refreshed_tools = refreshed
+    assert {t.name for t in refreshed_tools} == {"turn_on"}  # turn_off gone from return value
+
+    pairs = await service.list_servers(user.id)
+    assert pairs
+    _, listed_tools = pairs[0]
+    assert {t.name for t in listed_tools} == {"turn_on"}  # turn_off gone from list_for_server
+
+
 async def test_refresh_preserves_enabled_flags(
     session: AsyncSession,
     make_user,

@@ -74,12 +74,15 @@ async def test_attach_list_and_toggle_tool(mcp_client, monkeypatch) -> None:  # 
     body = resp.json()
     assert body["name"] == "home"
     assert {t["name"] for t in body["tools"]} == {"turn_on", "turn_off"}
+    assert "headers" not in body  # auth headers are write-only; must not appear in attach response
     server_id = body["id"]
     tool_id = next(t["id"] for t in body["tools"] if t["name"] == "turn_off")
 
     listed = await mcp_client.get("/mcp/servers")
     assert listed.status_code == 200
     assert [s["name"] for s in listed.json()] == ["home"]
+    for server in listed.json():
+        assert "headers" not in server  # auth headers must not appear in list responses either
 
     toggled = await mcp_client.patch(
         f"/mcp/servers/{server_id}/tools/{tool_id}", json={"enabled": False}

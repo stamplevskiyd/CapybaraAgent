@@ -164,6 +164,14 @@ messages in the style of the memory slice's 502/503.
 
 ## Security & known limitations
 
+- **Turn-time fail-open is preflight-based; the preflight→run race is not covered in
+  sub-slice A.** `build_toolsets` opens a reachability check (`discover`) at the *start*
+  of each turn; a server that fails this preflight is skipped so the reply proceeds. A
+  server that *passes* the preflight but becomes unreachable *between* the preflight
+  ``discover`` and the pydantic-ai agent's actual tool invocation is **not** masked — the
+  error propagates through `stream_reply` and breaks the reply. Airtight run-time
+  degradation (e.g. per-call retry, persistent connection pool) is deferred to the future
+  connection-pool slice.
 - **Auth headers are stored as plain JSON — NOT encrypted at rest. This is a TODO for a
   dedicated follow-up slice.** Rationale for deferring: CapybaraAgent is local-first (the
   DB lives on the user's own machine), and encryption brings key management/rotation that
