@@ -58,7 +58,9 @@ services:
       # frontend/vite.config.ts, which proxies /api to this target).
       VITE_API_PROXY_TARGET: http://api:8000
     ports:
-      - "3000:3000"
+      # Bind to loopback only — Vite proxies /api to the API container, so a
+      # LAN-exposed 3000 would bypass the API's own loopback binding above.
+      - "127.0.0.1:3000:3000"
     # Bind-mount the whole frontend for HMR; the anonymous volume keeps the
     # image's node_modules (installed by `npm ci`) from being shadowed.
     volumes:
