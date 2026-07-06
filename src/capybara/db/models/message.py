@@ -42,6 +42,10 @@ class Message(Base, TimestampMixin):
     #: ``{"id", "name", "args", "result"}``. ``NULL`` when the turn used no tools.
     #: Not replayed into model context — see ``to_model_messages``.
     tool_calls: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    #: Display-only record of facts auto-captured from this assistant turn: a list of
+    #: ``{"content", "category"}``. ``NULL`` when nothing was stored. Written by the
+    #: post-response extraction task, never replayed into model context.
+    memory_saves: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     incomplete: Mapped[bool] = mapped_column(default=False)
     seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False, unique=True)
     chat: Mapped[Chat] = relationship(back_populates="messages")

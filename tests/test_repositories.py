@@ -210,6 +210,19 @@ async def test_fact_repo_search_returns_nearest_first(session: AsyncSession) -> 
     assert results[0][1] < results[-1][1]  # nearest has the smallest distance
 
 
+async def test_message_memory_saves_roundtrips(session: AsyncSession) -> None:
+    """memory_saves persists a list of {content, category} dicts and reads back intact."""
+    user = await _seed_user(session)
+    chat = await ChatRepo(session).create(user.id, "c")
+    messages = MessageRepo(session)
+    msg = await messages.create(chat_id=chat.id, role="assistant", content="hi")
+    saves = [{"content": "Любит чай", "category": "preference"}]
+    await messages.update(msg, memory_saves=saves)
+    refetched = await messages.get(msg.id)
+    assert refetched is not None
+    assert refetched.memory_saves == saves
+
+
 async def test_fact_repo_search_is_user_scoped(session: AsyncSession) -> None:
     from capybara.db.models import User
     from capybara.repositories.fact_repo import FactRepo
