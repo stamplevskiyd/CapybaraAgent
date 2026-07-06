@@ -160,3 +160,26 @@ async def test_facts_are_per_user_isolated(
     patch_resp = await client.patch(f"/memory/facts/{other_fact_id}", json={"content": "hax"})
     assert patch_resp.status_code == 404
     assert (await client.delete(f"/memory/facts/{other_fact_id}")).status_code == 404
+
+
+async def test_update_fact_lost_race_returns_404(client: AsyncClient) -> None:
+    """PATCH surfaces 404 when the fact vanishes between the ownership check and the update.
+
+    get_owned_fact reads on the request session while the service re-reads on its own
+    sessions; a concurrent delete in that window makes update_fact return None. That
+    must map to the same 404 as a missing fact — not an assert that becomes a 500.
+    """
+    from capybara.api.dependencies import get_memory_service
+
+    created = await client.post(
+        "/memory/facts", json={"content": "Любит чай", "category": "preference"}
+    )
+    fact_id = created.json()["id"]
+
+    class VanishedFactService:
+        async def update_fact(self, user_id, fact_id, *, content=None, category=None):  # type: ignore[no-untyped-def]
+            return None  # the fact was deleted between the route check and this call
+
+    app.dependency_overrides[get_memory_service] = lambda: VanishedFactService()
+    resp = await client.patch(f"/memory/facts/{fact_id}", json={"content": "Новое"})
+    assert resp.status_code == 404

@@ -46,3 +46,17 @@ async def test_ensure_available_rejects_unset_and_unknown(settings: Settings) ->
     with pytest.raises(ModelUnavailableError):
         await agent.ensure_available("ghost:1b")
     await agent.ensure_available("llama3.1:8b")  # no raise
+
+
+async def test_ensure_available_returns_the_validated_name(settings: Settings) -> None:
+    """ensure_available narrows str | None to str by returning the validated name.
+
+    Callers can then use the return value directly instead of re-asserting that the
+    optional model is not None after the call.
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"models": [{"name": "llama3.1:8b"}]})
+
+    agent = _agent_with_transport(settings, handler)
+    assert await agent.ensure_available("llama3.1:8b") == "llama3.1:8b"

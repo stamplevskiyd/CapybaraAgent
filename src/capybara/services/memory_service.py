@@ -160,17 +160,29 @@ class MemoryService:
         return [fact for fact, distance in results if (1.0 - distance) >= min_similarity]
 
     async def get_auto_capture(self, user_id: UUID) -> bool:
-        """Return the user's auto-capture toggle."""
+        """Return the user's auto-capture toggle.
+
+        Raises:
+            LookupError: If no user with *user_id* exists (an authenticated caller's
+                row vanishing mid-request is an internal inconsistency, surfaced
+                explicitly rather than via an ``assert`` that ``-O`` would strip).
+        """
         async with self._sessionmaker() as session:
             user = await session.get(User, user_id)
-            assert user is not None
+            if user is None:
+                raise LookupError(f"User {user_id} not found")
             return user.memory_auto_capture
 
     async def set_auto_capture(self, user_id: UUID, value: bool) -> bool:
-        """Persist the user's auto-capture toggle and return the new value."""
+        """Persist the user's auto-capture toggle and return the new value.
+
+        Raises:
+            LookupError: If no user with *user_id* exists (see ``get_auto_capture``).
+        """
         async with self._sessionmaker() as session:
             user = await session.get(User, user_id)
-            assert user is not None
+            if user is None:
+                raise LookupError(f"User {user_id} not found")
             user.memory_auto_capture = value
             await session.commit()
             return value

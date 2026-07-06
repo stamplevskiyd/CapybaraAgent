@@ -224,8 +224,11 @@ class BaseAgent(ABC):
         result = await agent.run(user_content)
         return result.output
 
-    async def ensure_available(self, model_name: str | None) -> None:
-        """Raise ModelUnavailableError if model_name is unset or not in the live list.
+    async def ensure_available(self, model_name: str | None) -> str:
+        """Return *model_name* if it is set and present in the provider's live list.
+
+        Returning the validated name narrows ``str | None`` to ``str`` for callers,
+        so no post-call assertion is needed.
 
         Raises:
             ModelUnavailableError: If *model_name* is ``None`` or absent from the list.
@@ -236,6 +239,7 @@ class BaseAgent(ABC):
         available = await self.list_models()
         if model_name not in available:
             raise ModelUnavailableError(model_name, available)
+        return model_name
 
     @staticmethod
     def to_model_messages(messages: Sequence[Message]) -> list[ModelMessage]:

@@ -70,7 +70,10 @@ async def update_fact(
         )
     except (EmbeddingModelUnavailableError, ModelProviderError) as exc:
         _raise_for_embed_error(exc)
-    assert updated is not None  # get_owned_fact already verified ownership
+    if updated is None:
+        # The fact vanished between the ownership check and the service's own re-read
+        # (e.g. a concurrent delete) — surface the same 404 as get_owned_fact would.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fact not found")
     return FactOut.model_validate(updated)
 
 

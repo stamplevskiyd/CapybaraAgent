@@ -151,8 +151,7 @@ class ChatService:
             )
         # No DB connection is held here. Still validated before the user message is
         # written, so an unusable model never leaves an orphaned message.
-        await self._agent.ensure_available(model)
-        assert model is not None  # ensure_available rejects None
+        model = await self._agent.ensure_available(model)
         async with self._sessionmaker() as session:
             chats = ChatRepo(session)
             chat = await chats.get(chat_id)
@@ -242,8 +241,7 @@ class ChatService:
             all_messages = await messages.list(FieldEquals(Message.chat_id, chat_id))
 
         # No DB connection is held here. Still validated before any mutation.
-        await self._agent.ensure_available(model)
-        assert model is not None  # ensure_available rejects None
+        model = await self._agent.ensure_available(model)
 
         # Find the last user message (highest seq among role=="user")
         last_user: Message | None = None

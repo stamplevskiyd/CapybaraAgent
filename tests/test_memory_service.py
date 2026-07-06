@@ -1,5 +1,6 @@
 import asyncio
 
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -98,6 +99,25 @@ async def test_auto_capture_flag_roundtrip(
     assert await service.get_auto_capture(user_id) is True
     assert await service.set_auto_capture(user_id, False) is False
     assert await service.get_auto_capture(user_id) is False
+
+
+async def test_auto_capture_raises_lookup_error_for_missing_user(
+    engine: AsyncEngine, settings: Settings
+) -> None:
+    """A vanished user surfaces as an explicit LookupError, not a stripped-out assert.
+
+    An `assert` here would disappear under `python -O` and turn into an
+    AttributeError on None; the failure must stay explicit on every interpreter.
+    """
+    from uuid import uuid4
+
+    maker = create_sessionmaker(engine)
+    service = MemoryService(maker, StubMemoryAgent(settings), settings)
+    ghost = uuid4()
+    with pytest.raises(LookupError):
+        await service.get_auto_capture(ghost)
+    with pytest.raises(LookupError):
+        await service.set_auto_capture(ghost, True)
 
 
 async def test_extract_and_store_publishes_and_persists(engine, settings, user_id) -> None:  # type: ignore[no-untyped-def]
