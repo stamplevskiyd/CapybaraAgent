@@ -33,15 +33,7 @@ import styles from './MessageMarkdown.module.css'
  * only route that is testable and works in both contexts.
  */
 const markdownComponents: NonNullable<MarkdownTextPrimitiveProps['components']> = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  code({
-    className,
-    children,
-  }: {
-    className?: string
-    children?: React.ReactNode
-    [key: string]: any
-  }) {
+  code({ className, children }: { className?: string; children?: React.ReactNode }) {
     const lang = /language-(\w+)/.exec(className ?? '')?.[1]
     const text = String(children ?? '')
     // Fenced blocks carry a language class or end with a newline; inline code does not.
