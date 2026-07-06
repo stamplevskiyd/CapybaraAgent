@@ -589,3 +589,45 @@ async def test_stream_turn_emits_and_persists_tool_calls(
             "result": "- [personal] походы",
         }
     ]
+
+
+async def test_stream_turn_surfaces_mcp_toolset_tool(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """An MCP toolset from McpService.build_toolsets surfaces as ToolCall/ToolResult events."""
+    from pydantic_ai.toolsets import FunctionToolset
+
+    from support import ToolCallingFakeAgent
+
+    maker = create_sessionmaker(engine)
+    async with maker() as setup:
+        user = await make_user(setup)
+        chat = Chat(user_id=user.id, title="t", model="test-model")
+        setup.add(chat)
+        await setup.flush()
+        setup.add(Message(chat_id=chat.id, role="user", content="погода?"))
+        await setup.commit()
+
+    def weather(city: str) -> str:
+        """Return the weather for a city."""
+        return "sunny in " + city
+
+    class _FakeMcp:
+        async def build_toolsets(self, user_id):  # type: ignore[no-untyped-def]
+            return [FunctionToolset([weather]).prefixed("home")]
+
+    service = ChatService(
+        maker, ToolCallingFakeAgent(settings, "Готово"), mcp_service=_FakeMcp()
+    )
+
+    events = [
+        e
+        async for e in service.stream_turn(
+            chat.id, "test-model", "погода?", [], user_id=user.id
+        )
+    ]
+
+    assert any(isinstance(e, ToolCall) and e.name == "home_weather" for e in events)
+    assert any(isinstance(e, ToolResult) and "sunny" in e.result for e in events)

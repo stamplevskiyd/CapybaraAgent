@@ -20,6 +20,7 @@ from capybara.security.tokens import decode_access_token
 from capybara.services.auth_service import AuthService
 from capybara.services.chat_service import ChatService, ChatTurnLocks
 from capybara.services.event_bus import EventBus
+from capybara.services.mcp_service import McpService
 from capybara.services.memory_service import MemoryService
 from capybara.services.user_service import UserService
 
@@ -149,6 +150,13 @@ def get_memory_service(
     return MemoryService(sessionmaker, agent, settings, event_bus)
 
 
+def get_mcp_service(
+    sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
+) -> McpService:
+    """Return an McpService that owns short-lived sessions from the app sessionmaker."""
+    return McpService(sessionmaker)
+
+
 def get_fact_repo(
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> FactRepo:
@@ -186,6 +194,9 @@ def get_chat_service(
     agent: Annotated[BaseAgent, Depends(get_agent)],
     memory_service: Annotated[MemoryService, Depends(get_memory_service)],
     turn_locks: Annotated[ChatTurnLocks, Depends(get_chat_turn_locks)],
+    mcp_service: Annotated[McpService, Depends(get_mcp_service)],
 ) -> ChatService:
-    """Return a ChatService that owns short-lived sessions and carries the recall tool."""
-    return ChatService(sessionmaker, agent, memory_service, turn_locks)
+    """Return a ChatService wired with recall, MCP toolsets, and the shared turn locks."""
+    return ChatService(
+        sessionmaker, agent, memory_service, turn_locks, mcp_service=mcp_service
+    )
