@@ -113,19 +113,26 @@ class MemoryService:
         Returns the updated fact, or ``None`` if it does not exist or is not owned by
         *user_id* (defence in depth — the route already gates ownership).
         """
+        # Read first on a short session; the embedding call (a provider round-trip) then
+        # runs with no DB connection held, so a slow Ollama can't exhaust the pool.
+        async with self._sessionmaker() as session:
+            fact = await FactRepo(session).get(fact_id)
+            if fact is None or fact.user_id != user_id:
+                return None
+            current_content = fact.content
+        fields: dict[str, Any] = {}
+        if category is not None:
+            fields["category"] = category
+        if content is not None and content != current_content:
+            fields["content"] = content
+            [fields["embedding"]] = await self._agent.embed([content])
+        if not fields:
+            return fact  # nothing to change; return the row read above
         async with self._sessionmaker() as session:
             repo = FactRepo(session)
             fact = await repo.get(fact_id)
             if fact is None or fact.user_id != user_id:
                 return None
-            fields: dict[str, Any] = {}
-            if category is not None:
-                fields["category"] = category
-            if content is not None and content != fact.content:
-                fields["content"] = content
-                [fields["embedding"]] = await self._agent.embed([content])
-            if not fields:
-                return fact
             fact = await repo.update(fact, **fields)
             await session.commit()
             await session.refresh(fact)

@@ -75,19 +75,30 @@ class ChatService:
             ModelUnavailableError: If the chat's model is unset or not installed.
             ModelProviderError: If the model provider cannot be reached.
         """
+        # Read ownership, model, and history on a short-lived session that is released
+        # *before* the provider model-check, so a slow/hung Ollama never holds a Postgres
+        # connection open and exhausts the pool.
         async with self._sessionmaker() as session:
             chats = ChatRepo(session)
             chat = await chats.get(chat_id)
             if chat is None or chat.user_id != user_id:
                 raise ChatNotFoundError(chat_id)
-            await self._agent.ensure_available(chat.model)
             model = chat.model
-            assert model is not None  # ensure_available rejects None
             messages = MessageRepo(session)
             history_rows = await messages.list(
                 FieldEquals(Message.chat_id, chat_id),
                 FieldEquals(Message.incomplete, False),
             )
+        # No DB connection is held here. Still validated before the user message is
+        # written, so an unusable model never leaves an orphaned message.
+        await self._agent.ensure_available(model)
+        assert model is not None  # ensure_available rejects None
+        async with self._sessionmaker() as session:
+            chats = ChatRepo(session)
+            chat = await chats.get(chat_id)
+            if chat is None or chat.user_id != user_id:
+                raise ChatNotFoundError(chat_id)
+            messages = MessageRepo(session)
             await messages.create(chat_id=chat_id, role="user", content=user_content)
             await chats.touch(chat)
             await session.commit()
@@ -197,13 +208,19 @@ class ChatService:
         """
         try:
             async with self._sessionmaker() as session:
-                chats = ChatRepo(session)
-                chat = await chats.get(chat_id)
+                chat = await ChatRepo(session).get(chat_id)
                 if chat is None or chat.title != DEFAULT_CHAT_TITLE or chat.model is None:
                     return None
-                title = await self._agent.generate_title(chat.model, first_user_message)
-                if not title.strip():
-                    return None
+                model = chat.model
+            # Generate with no DB connection held; the provider call can be slow.
+            title = await self._agent.generate_title(model, first_user_message)
+            if not title.strip():
+                return None
+            async with self._sessionmaker() as session:
+                chats = ChatRepo(session)
+                chat = await chats.get(chat_id)
+                if chat is None or chat.title != DEFAULT_CHAT_TITLE:
+                    return None  # deleted or renamed while the title was generating
                 await chats.update(chat, title=title)
                 await session.commit()
                 return title

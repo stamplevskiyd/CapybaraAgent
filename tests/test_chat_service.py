@@ -2,7 +2,8 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncEngine
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from capybara.config import Settings
 from capybara.db.engine import create_sessionmaker
@@ -132,6 +133,40 @@ async def test_begin_turn_touches_chat_when_user_message_is_saved(
         reloaded = await check.get(Chat, chat_id)
         assert reloaded is not None
         assert reloaded.updated_at > old_time
+
+
+async def test_begin_turn_holds_no_session_during_model_check(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """The provider model-check must not run while a DB connection is held.
+
+    A slow/hung Ollama holding a Postgres connection open would exhaust the pool. This
+    pins the fix: with a size-1 pool, an agent that itself touches the DB during the
+    model check would deadlock if begin_turn still held its session across the call.
+    """
+    user_id, chat_id = await _seed_chat(engine, make_user, "poolguard")
+    # Single connection, no overflow, fail fast instead of hanging if exhausted.
+    limited = create_async_engine(
+        settings.database_url, pool_size=1, max_overflow=0, pool_timeout=1
+    )
+    maker = create_sessionmaker(limited)
+
+    class SessionProbingAgent(FakeAgent):
+        async def list_models(self) -> list[str]:
+            # Acquire a second connection while the caller checks the model; this
+            # exhausts the size-1 pool iff begin_turn is still holding its session.
+            async with maker() as probe:
+                await probe.execute(sa.text("SELECT 1"))
+            return list(self._models)
+
+    service = ChatService(maker, SessionProbingAgent(settings, "x"))
+    try:
+        model, _history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+        assert model == "test-model"
+    finally:
+        await limited.dispose()
 
 
 async def test_begin_turn_excludes_incomplete_from_history(
