@@ -280,6 +280,10 @@ async def regenerate_message(
     except BaseException as exc:
         lease.release()
         _raise_for_turn_error(exc)
+    # Deliberately no auto-capture background task (unlike send_message): a regenerate
+    # re-answers a user message whose original send already ran extraction, so running
+    # it again would only re-process the same turn. Pinned by
+    # test_regenerate_does_not_auto_capture.
     return TurnStreamingResponse(
         _turn_event_stream(service, lease, chat_id, model, last_user_content, history, user.id),
         lease=lease,
