@@ -89,6 +89,42 @@ class PartialThenFailAgent(BaseAgent):
         raise RuntimeError(self._message)
 
 
+class PartialThenHangAgent(BaseAgent):
+    """Agent that streams one partial delta and then blocks until cancelled.
+
+    Models a client disconnect mid-reply: the consumer cancels the stream while the
+    agent is suspended waiting for the next token.
+    """
+
+    def __init__(self, settings: Settings, partial: str) -> None:
+        self._partial = partial
+        super().__init__(settings)
+
+    async def list_models(self) -> list[str]:
+        return ["test-model"]
+
+    def _build_model(self, name: str) -> Model:
+        return TestModel()
+
+    async def embed(self, texts):  # type: ignore[no-untyped-def]
+        return [[0.1] * 768 for _ in texts]
+
+    async def stream_reply(
+        self,
+        model_name: str,
+        user_content: str,
+        history: list[ModelMessage],
+        acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
+    ) -> AsyncIterator[StreamedText]:
+        """Yield one accumulated delta, then wait forever (until cancelled)."""
+        import asyncio
+
+        acc.text += self._partial
+        yield StreamedText(text=self._partial)
+        await asyncio.Event().wait()
+
+
 class SlowStreamAgent(FakeAgent):
     """FakeAgent whose stream yields after an await, so concurrent turns overlap.
 

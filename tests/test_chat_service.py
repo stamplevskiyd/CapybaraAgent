@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import anyio
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
@@ -12,7 +13,13 @@ from capybara.filters import FieldEquals
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.chat_service import ChatNotFoundError, ChatService, NoUserMessageError
 from capybara.services.events import Delta, Done, ToolCall, ToolResult
-from support import FakeAgent, PartialThenFailAgent, RaisingAgent, ScriptedToolAgent
+from support import (
+    FakeAgent,
+    PartialThenFailAgent,
+    PartialThenHangAgent,
+    RaisingAgent,
+    ScriptedToolAgent,
+)
 
 
 async def _seed_chat(engine: AsyncEngine, make_user, username: str) -> tuple[object, object]:  # type: ignore[no-untyped-def]
@@ -106,6 +113,37 @@ async def test_stream_turn_does_not_persist_empty_assistant_on_immediate_error(
     async with maker() as check:
         stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
     assert [m.role for m in stored] == ["user"]
+
+
+async def test_stream_turn_persists_partial_when_cancelled_mid_stream(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """A client disconnect mid-stream must still persist the partial reply.
+
+    Starlette delivers a disconnect as anyio cancellation, which keeps re-raising
+    CancelledError at every unshielded await until the task exits — including the
+    persistence awaits in stream_turn's cleanup. The persist must be shielded, or
+    the partial text (and its incomplete marker) is silently lost.
+    """
+    user_id, chat_id = await _seed_chat(engine, make_user, "disconnect_user")
+    maker = create_sessionmaker(engine)
+
+    service = ChatService(maker, PartialThenHangAgent(settings, "Частич"))
+
+    model, history = await service.begin_turn(user_id, chat_id, "Вопрос")  # type: ignore[arg-type]
+    with anyio.CancelScope() as scope:
+        async for event in service.stream_turn(chat_id, model, "Вопрос", history):  # type: ignore[arg-type]
+            if isinstance(event, Delta):
+                scope.cancel()
+    assert scope.cancelled_caught
+
+    async with maker() as check:
+        stored = await MessageRepo(check).list(FieldEquals(Message.chat_id, chat_id))
+    assert [m.role for m in stored] == ["user", "assistant"]
+    assert stored[-1].content == "Частич"
+    assert stored[-1].incomplete is True
 
 
 async def test_begin_turn_touches_chat_when_user_message_is_saved(

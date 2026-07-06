@@ -5,6 +5,7 @@ import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
 
+import anyio
 from pydantic_ai import Tool
 from pydantic_ai.messages import ModelMessage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -151,9 +152,10 @@ class ChatService:
         memory service is wired, the recall tool is added to the run's tool list so the
         model can search long-term memory mid-turn.
 
-        If the stream fails after some tokens, the partial text is persisted with
-        ``incomplete=True`` before the error propagates. If it fails before the first
-        token, nothing is written, so a failed turn never leaves a blank assistant message.
+        If the stream fails after some tokens — including cancellation when the client
+        disconnects — the partial text is persisted with ``incomplete=True`` before the
+        error propagates. If it fails before the first token, nothing is written, so a
+        failed turn never leaves a blank assistant message.
         """
         tools: list[Tool[None]] = []
         if user_id is not None and self._memory_service is not None:
@@ -172,7 +174,11 @@ class ChatService:
                     yield ToolResult(id=event.id, result=event.result)
             completed = True
         finally:
-            assistant_id = await self._persist_assistant(chat_id, acc, completed=completed)
+            # A client disconnect cancels this generator, and the cancellation is
+            # re-delivered at every subsequent await — shield the persist or the
+            # partial reply (and its incomplete marker) would be silently lost.
+            with anyio.CancelScope(shield=True):
+                assistant_id = await self._persist_assistant(chat_id, acc, completed=completed)
         if completed:
             yield Done(message_id=assistant_id, usage=acc.usage)
 
