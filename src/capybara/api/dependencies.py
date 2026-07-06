@@ -143,9 +143,10 @@ def get_memory_service(
     sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
     agent: Annotated[BaseAgent, Depends(get_agent)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
+    event_bus: Annotated[EventBus, Depends(get_event_bus)],
 ) -> MemoryService:
-    """Return a MemoryService that owns short-lived sessions from the app sessionmaker."""
-    return MemoryService(sessionmaker, agent, settings)
+    """Return a MemoryService that owns short-lived sessions and can publish events."""
+    return MemoryService(sessionmaker, agent, settings, event_bus)
 
 
 def get_fact_repo(

@@ -14,6 +14,7 @@ from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.fact_repo import FactRepo
 from capybara.repositories.message_repo import MessageRepo
+from capybara.services.event_bus import EventBus
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +68,17 @@ class MemoryService:
     """
 
     def __init__(
-        self, sessionmaker: async_sessionmaker[AsyncSession], agent: BaseAgent, settings: Settings
+        self,
+        sessionmaker: async_sessionmaker[AsyncSession],
+        agent: BaseAgent,
+        settings: Settings,
+        event_bus: EventBus | None = None,
     ) -> None:
-        """Store the sessionmaker, provider agent, and settings."""
+        """Store the sessionmaker, provider agent, settings, and optional event bus."""
         self._sessionmaker = sessionmaker
         self._agent = agent
         self._settings = settings
+        self._event_bus = event_bus
 
     async def list_facts(self, user_id: UUID) -> list[Fact]:
         """Return the user's facts, newest first."""
@@ -182,13 +188,16 @@ class MemoryService:
                 FieldEquals(Message.chat_id, chat_id),
                 FieldEquals(Message.incomplete, False),
             )
+        last_assistant = next((m for m in reversed(messages) if m.role == "assistant"), None)
         turn = _last_turn_text(messages)
-        if turn is None:
+        if turn is None or last_assistant is None:
             return
+        assistant_id = last_assistant.id
 
         extracted = await self._agent.run_structured(
             model, EXTRACTION_SYSTEM_PROMPT, turn, ExtractedFacts
         )
+        saved: list[ExtractedFact] = []
         for candidate in extracted.facts:
             [embedding] = await self._agent.embed([candidate.content])
             async with self._sessionmaker() as session:
@@ -204,6 +213,29 @@ class MemoryService:
                     source="auto",
                 )
                 await session.commit()
+            saved.append(candidate)
+
+        if not saved:
+            return
+        facts_payload = [{"content": f.content, "category": f.category} for f in saved]
+        async with self._sessionmaker() as session:
+            repo_m = MessageRepo(session)
+            message = await repo_m.get(assistant_id)
+            if message is not None:
+                await repo_m.update(message, memory_saves=facts_payload)
+                await session.commit()
+        if self._event_bus is not None:
+            await self._event_bus.publish(
+                user_id,
+                {
+                    "event": "memory-save",
+                    "data": {
+                        "chat_id": str(chat_id),
+                        "message_id": str(assistant_id),
+                        "facts": facts_payload,
+                    },
+                },
+            )
 
 
 async def schedule_extraction(service: MemoryService, user_id: UUID, chat_id: UUID) -> None:
