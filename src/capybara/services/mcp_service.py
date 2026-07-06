@@ -239,7 +239,7 @@ class McpService:
                 continue
             try:
                 await mcp_adapter.discover(url, headers)
-            except McpUnreachableError, McpProtocolError:
+            except (McpUnreachableError, McpProtocolError):
                 logger.warning("MCP server %r unreachable this turn; skipping its tools", name)
                 continue
             toolsets.append(mcp_adapter.build_toolset(url, headers, enabled_names, _slug(name)))

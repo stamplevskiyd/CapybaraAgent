@@ -110,7 +110,7 @@ chat agent alongside built-in tools.
 **Attach a server** — `POST /mcp/servers` with JSON `{"name": "…", "url": "…", "headers": {…}}`.
 Pass auth credentials in `headers` (e.g. `"Authorization": "Bearer …"`). On attach the API
 connects to the server, discovers its tools, and stores them — all enabled by default.
-Servers and their headers are **never returned in API responses** (write-only).
+Auth headers are **write-only** — they are never included in API responses.
 
 **Per-tool curation** — `PATCH /mcp/servers/{id}/tools/{tool_id}` toggles `{"enabled": false}`
 on a tool. Only enabled tools of enabled servers are offered to the chat agent. This is
