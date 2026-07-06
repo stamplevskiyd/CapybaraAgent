@@ -19,3 +19,8 @@ test('shows the saved-fact count and expands to the list', async () => {
   expect(screen.getByText('Любит чай')).toBeInTheDocument()
   expect(screen.getByText('Пишет на Python')).toBeInTheDocument()
 })
+
+test('renders nothing when saves is empty', () => {
+  const { container } = render(<MemorySaveChip saves={[]} />)
+  expect(container.firstChild).toBeNull()
+})

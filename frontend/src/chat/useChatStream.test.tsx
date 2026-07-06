@@ -175,6 +175,67 @@ test('tracks tool-call state through running and result frames', async () => {
   expect(assistant.content).toBe('Вы любите походы')
 })
 
+test('applies a memory-save event from /events to the matching message', async () => {
+  // Use a controllable ReadableStream so we push the memory-save event only after
+  // loadHistory has had a chance to populate messages with stable backend ids.
+  let pushEvent!: (chunk: string) => void
+  const eventsStream = new ReadableStream({
+    start(controller) {
+      pushEvent = (chunk) => controller.enqueue(new TextEncoder().encode(chunk))
+      // Stream is intentionally kept open (no close) to prevent the reconnect
+      // back-off loop from running inside the test.
+    },
+  })
+
+  server.use(
+    http.get('/api/events', () =>
+      new HttpResponse(eventsStream, { headers: { 'Content-Type': 'text/event-stream' } }),
+    ),
+    http.get('/api/chats/c1', () =>
+      HttpResponse.json({
+        id: 'c1',
+        title: 'Test',
+        model: null,
+        is_favorite: false,
+        created_at: '',
+        updated_at: '',
+        messages: [
+          {
+            id: 'msg-memory-test',
+            role: 'assistant',
+            content: 'Hello',
+            model: null,
+            incomplete: false,
+            created_at: '',
+          },
+        ],
+      }),
+    ),
+  )
+
+  const { result } = renderHook(() => useChatStream('c1'), { wrapper })
+
+  // Populate state with a message that has a stable backend id via loadHistory.
+  await act(async () => {
+    await result.current.loadHistory()
+  })
+
+  expect(result.current.messages.find((m) => m.id === 'msg-memory-test')).toBeDefined()
+
+  // Push the memory-save SSE frame targeting the loaded message.
+  act(() => {
+    pushEvent(
+      'event: memory-save\ndata: {"chat_id":"c1","message_id":"msg-memory-test","facts":[{"content":"Любит чай","category":"preference"}]}\n\n',
+    )
+  })
+
+  // Wait for applyMemorySave to update state.
+  await waitFor(() => {
+    const msg = result.current.messages.find((m) => m.id === 'msg-memory-test')
+    expect(msg?.memorySaves).toEqual([{ content: 'Любит чай', category: 'preference' }])
+  })
+})
+
 test('regenerate calls /messages/regenerate and replaces the last assistant without duplicating the user bubble', async () => {
   let regenerateCalled = false
 

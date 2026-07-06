@@ -7,4 +7,7 @@ test('russian plural for facts', () => {
   expect(pluralFacts(5)).toBe('фактов')
   expect(pluralFacts(11)).toBe('фактов')
   expect(pluralFacts(21)).toBe('факт')
+  expect(pluralFacts(12)).toBe('фактов')
+  expect(pluralFacts(13)).toBe('фактов')
+  expect(pluralFacts(14)).toBe('фактов')
 })
