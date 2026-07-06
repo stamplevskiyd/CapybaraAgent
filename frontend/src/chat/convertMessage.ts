@@ -21,5 +21,6 @@ export function convertMessage(m: ChatMessage): ThreadMessageLike {
     // assistant-ui reports hasContent=false and the typing indicator can show.
     content: [...toolParts, ...textParts],
     status: m.streaming ? { type: 'running' } : undefined,
+    metadata: { custom: { memorySaves: m.memorySaves ?? [] } },
   }
 }

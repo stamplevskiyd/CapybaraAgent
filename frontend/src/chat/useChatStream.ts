@@ -19,6 +19,7 @@ export type ChatMessage = {
   streaming: boolean
   error?: boolean
   toolCalls?: ToolCallState[]
+  memorySaves?: { content: string; category: string }[]
 }
 
 let counter = 0
@@ -79,6 +80,7 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
                 running: false,
               }))
             : undefined,
+          memorySaves: m.memory_saves ?? undefined,
         })),
       )
     } finally {

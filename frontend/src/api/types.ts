@@ -31,6 +31,11 @@ export interface ToolCallOut {
   result: string | null
 }
 
+export interface MemorySaveOut {
+  content: string
+  category: string
+}
+
 export interface MessageOut {
   id: string
   role: string
@@ -39,6 +44,7 @@ export interface MessageOut {
   incomplete: boolean
   created_at: string
   tool_calls?: ToolCallOut[] | null
+  memory_saves?: MemorySaveOut[] | null
 }
 
 export type ChatDetailOut = ChatOut & { messages: MessageOut[] }
