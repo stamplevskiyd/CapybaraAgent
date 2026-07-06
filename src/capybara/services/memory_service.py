@@ -221,9 +221,12 @@ class MemoryService:
         async with self._sessionmaker() as session:
             repo_m = MessageRepo(session)
             message = await repo_m.get(assistant_id)
-            if message is not None:
-                await repo_m.update(message, memory_saves=facts_payload)
-                await session.commit()
+            if message is None:
+                # Message was deleted between extraction and write; skip publish so
+                # subscribers never receive an event pointing at a missing row.
+                return
+            await repo_m.update(message, memory_saves=facts_payload)
+            await session.commit()
         if self._event_bus is not None:
             await self._event_bus.publish(
                 user_id,

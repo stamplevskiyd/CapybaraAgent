@@ -120,3 +120,14 @@ async def test_messages_has_tool_calls_column(migrated_engine: AsyncEngine) -> N
     async with migrated_engine.connect() as conn:
         cols = await conn.run_sync(_columns)
     assert "tool_calls" in cols
+
+
+async def test_messages_has_memory_saves_column(migrated_engine: AsyncEngine) -> None:
+    """The memory_saves JSONB column exists after migrations run."""
+
+    def _columns(sync_conn):  # type: ignore[no-untyped-def]
+        return {c["name"] for c in inspect(sync_conn).get_columns("messages")}
+
+    async with migrated_engine.connect() as conn:
+        cols = await conn.run_sync(_columns)
+    assert "memory_saves" in cols
