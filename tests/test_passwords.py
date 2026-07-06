@@ -1,4 +1,9 @@
-from capybara.security.passwords import hash_password, verify_password
+from capybara.security.passwords import (
+    hash_password,
+    hash_password_async,
+    verify_password,
+    verify_password_async,
+)
 
 
 def test_hash_password_returns_argon2_hash() -> None:
@@ -23,3 +28,22 @@ def test_verify_password_wrong() -> None:
 
 def test_verify_password_malformed_hash_returns_false() -> None:
     assert verify_password("anything", "not-a-valid-argon2-hash") is False
+
+
+async def test_hash_password_async_produces_verifiable_hash() -> None:
+    """The threadpool-offloaded hash is a normal argon2 hash the sync verifier accepts."""
+    hashed = await hash_password_async("async-secret")
+    assert hashed.startswith("$argon2")
+    assert verify_password("async-secret", hashed) is True
+
+
+async def test_verify_password_async_matches_and_rejects() -> None:
+    """The offloaded verifier returns True for the right password and False otherwise."""
+    hashed = hash_password("async-secret")
+    assert await verify_password_async("async-secret", hashed) is True
+    assert await verify_password_async("wrong", hashed) is False
+
+
+async def test_verify_password_async_malformed_hash_returns_false() -> None:
+    """Malformed hashes fail closed on the async path too."""
+    assert await verify_password_async("anything", "not-a-valid-argon2-hash") is False

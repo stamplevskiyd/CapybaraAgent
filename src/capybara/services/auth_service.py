@@ -1,7 +1,7 @@
 """Authentication (login) orchestration."""
 
 from capybara.repositories.user_repo import UserRepo
-from capybara.security.passwords import verify_password
+from capybara.security.passwords import verify_password_async
 from capybara.security.tokens import create_access_token
 
 
@@ -21,7 +21,7 @@ class AuthService:
     async def login(self, username: str, password: str) -> str:
         """Return a JWT for valid credentials; raise InvalidCredentials otherwise."""
         user = await self._users.get_by_username(username)
-        if user is None or not verify_password(password, user.password_hash):
+        if user is None or not await verify_password_async(password, user.password_hash):
             raise InvalidCredentials
         return create_access_token(
             user.id,

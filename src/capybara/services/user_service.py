@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from capybara.db.models import User
 from capybara.repositories.user_repo import UserRepo
-from capybara.security.passwords import hash_password
+from capybara.security.passwords import hash_password_async
 
 # Name of the unique index on users.username (see the initial migration); a
 # violation of this specific constraint is the only IntegrityError we translate
@@ -43,11 +43,12 @@ class UserService:
         """
         if await self._users.get_by_username(username) is not None:
             raise UsernameTaken(username)
+        password_hash = await hash_password_async(password)
         try:
             return await self._users.create(
                 username=username,
                 display_name=display_name,
-                password_hash=hash_password(password),
+                password_hash=password_hash,
             )
         except IntegrityError as err:
             if _is_username_conflict(err):
