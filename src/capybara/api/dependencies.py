@@ -19,6 +19,7 @@ from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
 from capybara.services.auth_service import AuthService
 from capybara.services.chat_service import ChatService
+from capybara.services.event_bus import EventBus
 from capybara.services.memory_service import MemoryService
 from capybara.services.user_service import UserService
 
@@ -123,6 +124,19 @@ async def get_owned_chat(
     if chat is None or chat.user_id != user.id:
         raise HTTPException(status_code=404, detail="Chat not found")
     return chat
+
+
+def get_event_bus(request: Request) -> EventBus:
+    """Return the app-wide EventBus, lazily creating it if the lifespan did not run.
+
+    Lazy creation keeps tests that override other app-state dependencies working without
+    starting the lifespan, while production sets it once in ``main.lifespan``.
+    """
+    bus = getattr(request.app.state, "event_bus", None)
+    if bus is None:
+        bus = EventBus()
+        request.app.state.event_bus = bus
+    return cast(EventBus, bus)
 
 
 def get_memory_service(
