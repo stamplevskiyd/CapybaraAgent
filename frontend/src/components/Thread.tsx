@@ -6,11 +6,12 @@
  * User messages render as right-aligned bubbles; assistant messages render with the CapyLogo
  * glyph, markdown content (via MarkdownText → MarkdownTextPrimitive), and a hover action bar.
  */
-import { ThreadPrimitive, MessagePrimitive, ActionBarPrimitive } from '@assistant-ui/react'
+import { ThreadPrimitive, MessagePrimitive, ActionBarPrimitive, useMessage } from '@assistant-ui/react'
 import { ArrowDown, Copy, RefreshCw } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { MarkdownText } from './MessageMarkdown'
 import { ToolCallCard } from './ToolCallCard'
+import { MemorySaveChip } from './MemorySaveChip'
 import styles from './Thread.module.css'
 
 /**
@@ -38,6 +39,24 @@ function TypingIndicator() {
       <span className={styles.typingDot} />
     </div>
   )
+}
+
+/**
+ * Reads memorySaves from the current message's metadata and renders a MemorySaveChip.
+ *
+ * Placed as a named subcomponent so it can call useMessage (a hook) inside the
+ * MessagePrimitive.Root context that provides the message store.
+ */
+function MemorySaves() {
+  const saves = useMessage(
+    (m) =>
+      (
+        m.metadata?.custom as
+          | { memorySaves?: { content: string; category: string }[] }
+          | undefined
+      )?.memorySaves ?? [],
+  )
+  return <MemorySaveChip saves={saves} />
 }
 
 /**
@@ -80,6 +99,7 @@ function AssistantMessage() {
             </MessagePrimitive.If>
           </ActionBarPrimitive.Root>
         </MessagePrimitive.If>
+        <MemorySaves />
       </div>
     </MessagePrimitive.Root>
   )
