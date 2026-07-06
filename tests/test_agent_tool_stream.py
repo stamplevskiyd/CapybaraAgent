@@ -47,3 +47,30 @@ async def test_stream_reply_surfaces_tool_call_and_result(settings: Settings) ->
         }
     ]
     assert acc.text == "Готово"
+
+
+async def test_stream_reply_surfaces_toolset_tool(settings: Settings) -> None:
+    """A tool provided via a toolset is called and surfaces as tool-call/result events."""
+    from pydantic_ai.toolsets import FunctionToolset
+
+    from capybara.agent.base import StreamedToolCall, StreamedToolResult
+
+    def weather(city: str) -> str:
+        """Return the weather for a city."""
+        return "sunny in " + city
+
+    agent = ToolCallingFakeAgent(settings, "Готово")
+    toolset = FunctionToolset([weather]).prefixed("home")
+
+    acc = ReplyAccumulator()
+    events = [
+        e
+        async for e in agent.stream_reply(
+            "test-model", "погода?", [], acc, toolsets=[toolset]
+        )
+    ]
+
+    call_names = {e.name for e in events if isinstance(e, StreamedToolCall)}
+    results = [e for e in events if isinstance(e, StreamedToolResult)]
+    assert "home_weather" in call_names  # prefixed name reaches the model
+    assert any("sunny" in r.result for r in results)

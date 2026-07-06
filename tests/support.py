@@ -52,6 +52,7 @@ class RaisingAgent(BaseAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
+        toolsets=(),  # type: ignore[no-untyped-def]
     ) -> AsyncIterator[StreamedText]:
         """Raise immediately; the trailing yield only marks this as a generator."""
         raise RuntimeError(self._message)
@@ -82,6 +83,7 @@ class PartialThenFailAgent(BaseAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
+        toolsets=(),  # type: ignore[no-untyped-def]
     ) -> AsyncIterator[StreamedText]:
         """Yield one accumulated delta, then raise to abort the stream."""
         acc.text += self._partial
@@ -116,6 +118,7 @@ class PartialThenHangAgent(BaseAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
+        toolsets=(),  # type: ignore[no-untyped-def]
     ) -> AsyncIterator[StreamedText]:
         """Yield one accumulated delta, then wait forever (until cancelled)."""
         import asyncio
@@ -139,6 +142,7 @@ class SlowStreamAgent(FakeAgent):
         history,  # type: ignore[no-untyped-def]
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
+        toolsets=(),  # type: ignore[no-untyped-def]
     ):
         """Sleep to yield the loop, then emit the configured text as one delta."""
         import asyncio
@@ -225,6 +229,7 @@ class EmptyReplyAgent(FakeAgent):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
+        toolsets=(),  # type: ignore[no-untyped-def]
     ) -> AsyncIterator[StreamedText]:
         """Yield zero events; return normally to model a successful empty reply."""
         acc.model = "test"
@@ -246,6 +251,7 @@ class ScriptedToolAgent(FakeAgent):
         history,  # type: ignore[no-untyped-def]
         acc: ReplyAccumulator,
         tools=(),  # type: ignore[no-untyped-def]
+        toolsets=(),  # type: ignore[no-untyped-def]
     ):
         """Yield one tool call, its result, then the configured text."""
         from capybara.agent.base import StreamedToolCall, StreamedToolResult

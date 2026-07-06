@@ -20,6 +20,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 from pydantic_ai.models import Model
+from pydantic_ai.toolsets import AbstractToolset
 
 from capybara.config import Settings
 from capybara.db.models import Message
@@ -261,20 +262,25 @@ class BaseAgent(ABC):
         history: list[ModelMessage],
         acc: ReplyAccumulator,
         tools: Sequence[Tool[None]] = (),
+        toolsets: Sequence[AbstractToolset[None]] = (),
     ) -> AsyncIterator[AgentStreamEvent]:
         """Stream text and tool events for the named model, accumulating into acc.
 
         Uses ``agent.iter()`` so tool calls and their results are observable and can be
         surfaced to the UI. Text deltas fill ``acc.text``; each completed tool call is
         appended to ``acc.tool_calls`` as ``{"id", "name", "args", "result"}`` for
-        persistence. When *tools* are supplied the chat system prompt (recall nudge) is
-        set; with no tools the prompt is left empty so behaviour is unchanged.
+        persistence. When *tools* or *toolsets* are supplied the chat system prompt
+        (recall nudge) is set; with neither the prompt is left empty so behaviour is
+        unchanged. MCP-backed tools are supplied via *toolsets*; text/tool-event
+        handling is identical.
         """
         tool_list = list(tools)
+        toolset_list = list(toolsets)
         agent: Agent[None, str] = Agent(
             self._build_model(model_name),
-            system_prompt=CHAT_SYSTEM_PROMPT if tool_list else (),
+            system_prompt=CHAT_SYSTEM_PROMPT if (tool_list or toolset_list) else (),
             tools=tool_list,
+            toolsets=toolset_list,
         )
         # tool_call_id → index into acc.tool_calls, so a result can patch its call.
         pending: dict[str, int] = {}
