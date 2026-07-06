@@ -12,9 +12,7 @@ from capybara.config import Settings
 
 def _settings() -> Settings:
     # embedding_dimensions=2 so the small stub vectors below satisfy validation.
-    return Settings(
-        jwt_secret="x" * 32, embedding_model="nomic-embed-text", embedding_dimensions=2
-    )
+    return Settings(jwt_secret="x" * 32, embedding_model="nomic-embed-text", embedding_dimensions=2)
 
 
 async def test_ollama_embed_posts_and_parses() -> None:
