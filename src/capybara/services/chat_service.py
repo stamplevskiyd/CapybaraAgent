@@ -202,37 +202,49 @@ class ChatService:
             ModelUnavailableError: If the chat's model is unset or not installed.
             ModelProviderError: If the model provider cannot be reached.
         """
+        # Read ownership, model, and messages on a short-lived session that is released
+        # *before* the provider model-check (same pattern as begin_turn), so a slow/hung
+        # Ollama never holds a Postgres connection open and exhausts the pool.
         async with self._sessionmaker() as session:
             chats = ChatRepo(session)
             chat = await chats.get(chat_id)
             if chat is None or chat.user_id != user_id:
                 raise ChatNotFoundError(chat_id)
-            await self._agent.ensure_available(chat.model)
             model = chat.model
-            assert model is not None  # ensure_available rejects None
-
             messages = MessageRepo(session)
             all_messages = await messages.list(FieldEquals(Message.chat_id, chat_id))
 
-            # Find the last user message (highest seq among role=="user")
-            last_user: Message | None = None
-            for msg in reversed(all_messages):
-                if msg.role == "user":
-                    last_user = msg
-                    break
+        # No DB connection is held here. Still validated before any mutation.
+        await self._agent.ensure_available(model)
+        assert model is not None  # ensure_available rejects None
 
-            if last_user is None:
-                raise NoUserMessageError(chat_id)
+        # Find the last user message (highest seq among role=="user")
+        last_user: Message | None = None
+        for msg in reversed(all_messages):
+            if msg.role == "user":
+                last_user = msg
+                break
 
-            # Delete every message that trails the last user message (complete or incomplete)
-            for msg in all_messages:
+        if last_user is None:
+            raise NoUserMessageError(chat_id)
+
+        # History is all complete messages strictly before the last user message
+        history_rows = [m for m in all_messages if m.seq < last_user.seq and not m.incomplete]
+        last_user_content = last_user.content
+
+        # Delete every message that trails the last user message (complete or incomplete)
+        # on a fresh session. The caller holds the per-chat turn lock across the whole
+        # regenerate, so the message set cannot change between the read and this delete.
+        async with self._sessionmaker() as session:
+            chats = ChatRepo(session)
+            chat = await chats.get(chat_id)
+            if chat is None or chat.user_id != user_id:
+                raise ChatNotFoundError(chat_id)
+            messages = MessageRepo(session)
+            trailing = await messages.list(FieldEquals(Message.chat_id, chat_id))
+            for msg in trailing:
                 if msg.seq > last_user.seq:
                     await messages.delete(msg)
-
-            # History is all complete messages strictly before the last user message
-            history_rows = [m for m in all_messages if m.seq < last_user.seq and not m.incomplete]
-            last_user_content = last_user.content
-
             await session.commit()
 
         return model, last_user_content, self._agent.to_model_messages(history_rows)

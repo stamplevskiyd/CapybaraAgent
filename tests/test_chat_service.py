@@ -385,6 +385,48 @@ async def test_regenerate_turn_no_trailing_assistant_still_streams(
     assert len([m for m in stored if m.role == "user"]) == 1
 
 
+async def test_regenerate_turn_holds_no_session_during_model_check(
+    engine: AsyncEngine,
+    settings: Settings,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """The regenerate model-check must not run while a DB connection is held.
+
+    Mirrors test_begin_turn_holds_no_session_during_model_check: with a size-1 pool,
+    an agent that itself touches the DB during the model check deadlocks iff
+    regenerate_turn still holds its read session across the provider call.
+    """
+    user_id, chat_id = await _seed_chat(engine, make_user, "regen_poolguard")
+    seed_maker = create_sessionmaker(engine)
+    async with seed_maker() as setup:
+        repo = MessageRepo(setup)
+        await repo.create(chat_id=chat_id, role="user", content="Вопрос")
+        await repo.create(chat_id=chat_id, role="assistant", content="Старый", incomplete=False)
+        await setup.commit()
+
+    # Single connection, no overflow, fail fast instead of hanging if exhausted.
+    limited = create_async_engine(
+        settings.database_url, pool_size=1, max_overflow=0, pool_timeout=1
+    )
+    maker = create_sessionmaker(limited)
+
+    class SessionProbingAgent(FakeAgent):
+        async def list_models(self) -> list[str]:
+            # Acquire a second connection while the caller checks the model; this
+            # exhausts the size-1 pool iff regenerate_turn is still holding its session.
+            async with maker() as probe:
+                await probe.execute(sa.text("SELECT 1"))
+            return list(self._models)
+
+    service = ChatService(maker, SessionProbingAgent(settings, "x"))
+    try:
+        model, content, _history = await service.regenerate_turn(user_id, chat_id)  # type: ignore[arg-type]
+        assert model == "test-model"
+        assert content == "Вопрос"
+    finally:
+        await limited.dispose()
+
+
 async def test_regenerate_turn_raises_when_no_user_message(
     engine: AsyncEngine,
     settings: Settings,
