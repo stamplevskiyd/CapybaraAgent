@@ -1,6 +1,5 @@
 """Router for chat and message endpoints."""
 
-import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Annotated, NoReturn
@@ -28,6 +27,7 @@ from capybara.api.schemas import (
     MessageCreate,
     MessageOut,
 )
+from capybara.api.sse import SSE_HEADERS, format_sse
 from capybara.db.models import Chat, Message, User
 from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
@@ -116,31 +116,11 @@ async def update_chat(
     return ChatOut.model_validate(updated)
 
 
-def _sse(event: str, data: dict[str, object]) -> str:
-    """Format a single SSE frame as ``event: <name>`` / ``data: <json>``."""
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
-
 def _raise_for_model_error(exc: ModelUnavailableError | ModelProviderError) -> NoReturn:
     """Translate a model error into the matching HTTP error."""
     if isinstance(exc, ModelProviderError):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-
-
-# Headers that every SSE streaming response must carry.  Applied to both
-# send_message and regenerate so the Vite dev proxy, nginx, and the browser
-# all know this is a live stream and must not buffer chunks.
-_SSE_HEADERS: dict[str, str] = {
-    # Prevent the Vite dev proxy and browser fetch from buffering the
-    # response — chunks must arrive incrementally so assistant tokens
-    # appear in real time rather than all at once (or not at all).
-    "Cache-Control": "no-cache",
-    # Disable nginx upstream buffering in production.
-    "X-Accel-Buffering": "no",
-    # Keep the TCP connection open for the duration of the stream.
-    "Connection": "keep-alive",
-}
 
 
 @router.post("/{chat_id}/messages")
@@ -172,30 +152,32 @@ async def send_message(
                 chat_id, model, payload.content, history, user_id=user.id
             ):
                 if isinstance(event, Delta):
-                    yield _sse("delta", {"text": event.text})
+                    yield format_sse("delta", {"text": event.text})
                 elif isinstance(event, ToolCall):
-                    yield _sse(
+                    yield format_sse(
                         "tool-call", {"id": event.id, "name": event.name, "args": event.args}
                     )
                 elif isinstance(event, ToolResult):
-                    yield _sse("tool-result", {"id": event.id, "result": event.result})
+                    yield format_sse("tool-result", {"id": event.id, "result": event.result})
                 elif isinstance(event, Done):
-                    yield _sse(
+                    yield format_sse(
                         "done",
                         {"message_id": event.message_id, "usage": event.usage},
                     )
             if not history:  # first turn → derive a title without delaying the answer
                 title = await service.generate_title(chat_id, payload.content)
                 if title:
-                    yield _sse("title", {"title": title})
+                    yield format_sse("title", {"title": title})
         except Exception:  # surface a generic SSE error, never a broken stream
             logger.exception("chat stream failed for chat %s", chat_id)
-            yield _sse("error", {"message": "Internal server error while streaming the reply"})
+            yield format_sse(
+                "error", {"message": "Internal server error while streaming the reply"}
+            )
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers=_SSE_HEADERS,
+        headers=SSE_HEADERS,
         background=BackgroundTask(schedule_extraction, memory, user.id, chat_id),
     )
 
@@ -231,24 +213,26 @@ async def regenerate_message(
                 chat_id, model, last_user_content, history, user_id=user.id
             ):
                 if isinstance(event, Delta):
-                    yield _sse("delta", {"text": event.text})
+                    yield format_sse("delta", {"text": event.text})
                 elif isinstance(event, ToolCall):
-                    yield _sse(
+                    yield format_sse(
                         "tool-call", {"id": event.id, "name": event.name, "args": event.args}
                     )
                 elif isinstance(event, ToolResult):
-                    yield _sse("tool-result", {"id": event.id, "result": event.result})
+                    yield format_sse("tool-result", {"id": event.id, "result": event.result})
                 elif isinstance(event, Done):
-                    yield _sse(
+                    yield format_sse(
                         "done",
                         {"message_id": event.message_id, "usage": event.usage},
                     )
         except Exception:  # surface a generic SSE error, never a broken stream
             logger.exception("regenerate stream failed for chat %s", chat_id)
-            yield _sse("error", {"message": "Internal server error while streaming the reply"})
+            yield format_sse(
+                "error", {"message": "Internal server error while streaming the reply"}
+            )
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers=_SSE_HEADERS,
+        headers=SSE_HEADERS,
     )
