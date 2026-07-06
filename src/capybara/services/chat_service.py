@@ -1,5 +1,6 @@
 """Chat service orchestrating message persistence and LLM streaming."""
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
@@ -45,6 +46,29 @@ class NoUserMessageError(Exception):
         self.chat_id = chat_id
 
 
+class ChatTurnLocks:
+    """Per-chat async locks that serialize concurrent turns and regenerations.
+
+    A turn spans begin/regenerate → stream → persist across two request handlers, so
+    without serialization two overlapping sends (or a send racing a regenerate) on the
+    same chat interleave: both user messages land before either reply, or a regenerate
+    deletes an in-flight reply. One registry is shared app-wide (a ChatService is built
+    per request) so the lock for a given chat is the same object across requests.
+    """
+
+    def __init__(self) -> None:
+        """Start with no locks; one is created lazily on first use per chat."""
+        self._locks: dict[UUID, asyncio.Lock] = {}
+
+    def lock_for(self, chat_id: UUID) -> asyncio.Lock:
+        """Return the lock for *chat_id*, creating it on first request."""
+        lock = self._locks.get(chat_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[chat_id] = lock
+        return lock
+
+
 class ChatService:
     """Orchestrate a conversation turn: persist user/assistant messages and stream LLM reply."""
 
@@ -53,10 +77,18 @@ class ChatService:
         sessionmaker: async_sessionmaker[AsyncSession],
         agent: BaseAgent,
         memory_service: MemoryService | None = None,
+        turn_locks: ChatTurnLocks | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._agent = agent
         self._memory_service = memory_service
+        # A standalone registry by default keeps unit tests self-contained; the app wires
+        # the shared registry so locks span concurrent requests.
+        self._turn_locks = turn_locks or ChatTurnLocks()
+
+    def turn_lock(self, chat_id: UUID) -> asyncio.Lock:
+        """Return the per-chat lock serializing this chat's turns; held across a full turn."""
+        return self._turn_locks.lock_for(chat_id)
 
     async def begin_turn(
         self, user_id: UUID, chat_id: UUID, user_content: str

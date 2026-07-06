@@ -18,7 +18,7 @@ from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
 from capybara.services.auth_service import AuthService
-from capybara.services.chat_service import ChatService
+from capybara.services.chat_service import ChatService, ChatTurnLocks
 from capybara.services.event_bus import EventBus
 from capybara.services.memory_service import MemoryService
 from capybara.services.user_service import UserService
@@ -168,10 +168,24 @@ async def get_owned_fact(
     return fact
 
 
+def get_chat_turn_locks(request: Request) -> ChatTurnLocks:
+    """Return the app-wide per-chat turn-lock registry, lazily creating it if absent.
+
+    Lazy creation mirrors ``get_event_bus`` so tests that override other app-state
+    dependencies without running the lifespan still share one registry per app.
+    """
+    locks = getattr(request.app.state, "chat_turn_locks", None)
+    if locks is None:
+        locks = ChatTurnLocks()
+        request.app.state.chat_turn_locks = locks
+    return cast(ChatTurnLocks, locks)
+
+
 def get_chat_service(
     sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
     agent: Annotated[BaseAgent, Depends(get_agent)],
     memory_service: Annotated[MemoryService, Depends(get_memory_service)],
+    turn_locks: Annotated[ChatTurnLocks, Depends(get_chat_turn_locks)],
 ) -> ChatService:
     """Return a ChatService that owns short-lived sessions and carries the recall tool."""
-    return ChatService(sessionmaker, agent, memory_service)
+    return ChatService(sessionmaker, agent, memory_service, turn_locks)

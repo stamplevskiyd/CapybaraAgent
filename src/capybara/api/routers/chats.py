@@ -136,50 +136,66 @@ async def send_message(
     Ownership is checked and the user message is saved up front on a short-lived
     session; the LLM stream then runs holding no DB connection.  This endpoint does
     not take a request-scoped session — ChatService owns its own session lifecycle.
+
+    The per-chat turn lock is held from before the user message is written until the
+    stream finishes persisting the reply, so concurrent sends/regenerations on the same
+    chat never interleave. It is released in the stream's ``finally`` on the happy path,
+    or here if preparing the turn fails before streaming begins.
     """
+    lock = service.turn_lock(chat_id)
+    await lock.acquire()
+    handed_off = False
     try:
-        model, history = await service.begin_turn(user.id, chat_id, payload.content)
-    except ChatNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
-        ) from None
-    except (ModelUnavailableError, ModelProviderError) as exc:
-        _raise_for_model_error(exc)
-
-    async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(
-                chat_id, model, payload.content, history, user_id=user.id
-            ):
-                if isinstance(event, Delta):
-                    yield format_sse("delta", {"text": event.text})
-                elif isinstance(event, ToolCall):
-                    yield format_sse(
-                        "tool-call", {"id": event.id, "name": event.name, "args": event.args}
-                    )
-                elif isinstance(event, ToolResult):
-                    yield format_sse("tool-result", {"id": event.id, "result": event.result})
-                elif isinstance(event, Done):
-                    yield format_sse(
-                        "done",
-                        {"message_id": event.message_id, "usage": event.usage},
-                    )
-            if not history:  # first turn → derive a title without delaying the answer
-                title = await service.generate_title(chat_id, payload.content)
-                if title:
-                    yield format_sse("title", {"title": title})
-        except Exception:  # surface a generic SSE error, never a broken stream
-            logger.exception("chat stream failed for chat %s", chat_id)
-            yield format_sse(
-                "error", {"message": "Internal server error while streaming the reply"}
-            )
+            model, history = await service.begin_turn(user.id, chat_id, payload.content)
+        except ChatNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
+            ) from None
+        except (ModelUnavailableError, ModelProviderError) as exc:
+            _raise_for_model_error(exc)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers=SSE_HEADERS,
-        background=BackgroundTask(schedule_extraction, memory, user.id, chat_id),
-    )
+        async def event_stream() -> AsyncIterator[str]:
+            try:
+                async for event in service.stream_turn(
+                    chat_id, model, payload.content, history, user_id=user.id
+                ):
+                    if isinstance(event, Delta):
+                        yield format_sse("delta", {"text": event.text})
+                    elif isinstance(event, ToolCall):
+                        yield format_sse(
+                            "tool-call", {"id": event.id, "name": event.name, "args": event.args}
+                        )
+                    elif isinstance(event, ToolResult):
+                        yield format_sse("tool-result", {"id": event.id, "result": event.result})
+                    elif isinstance(event, Done):
+                        yield format_sse(
+                            "done",
+                            {"message_id": event.message_id, "usage": event.usage},
+                        )
+                if not history:  # first turn → derive a title without delaying the answer
+                    title = await service.generate_title(chat_id, payload.content)
+                    if title:
+                        yield format_sse("title", {"title": title})
+            except Exception:  # surface a generic SSE error, never a broken stream
+                logger.exception("chat stream failed for chat %s", chat_id)
+                yield format_sse(
+                    "error", {"message": "Internal server error while streaming the reply"}
+                )
+            finally:
+                lock.release()
+
+        response = StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+            background=BackgroundTask(schedule_extraction, memory, user.id, chat_id),
+        )
+        handed_off = True
+        return response
+    finally:
+        if not handed_off:
+            lock.release()
 
 
 @router.post("/{chat_id}/messages/regenerate")
@@ -193,46 +209,61 @@ async def regenerate_message(
     No new user message is written — this endpoint regenerates the assistant
     reply for the last existing user message.  Ownership is verified and the
     old assistant row(s) are removed before any SSE bytes are sent.
+
+    Holds the per-chat turn lock across delete → stream → persist so it cannot race a
+    concurrent send or regenerate on the same chat (released in the stream's ``finally``
+    or here if preparation fails before streaming).
     """
+    lock = service.turn_lock(chat_id)
+    await lock.acquire()
+    handed_off = False
     try:
-        model, last_user_content, history = await service.regenerate_turn(user.id, chat_id)
-    except ChatNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
-        ) from None
-    except NoUserMessageError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="No user message to regenerate"
-        ) from None
-    except (ModelUnavailableError, ModelProviderError) as exc:
-        _raise_for_model_error(exc)
-
-    async def event_stream() -> AsyncIterator[str]:
         try:
-            async for event in service.stream_turn(
-                chat_id, model, last_user_content, history, user_id=user.id
-            ):
-                if isinstance(event, Delta):
-                    yield format_sse("delta", {"text": event.text})
-                elif isinstance(event, ToolCall):
-                    yield format_sse(
-                        "tool-call", {"id": event.id, "name": event.name, "args": event.args}
-                    )
-                elif isinstance(event, ToolResult):
-                    yield format_sse("tool-result", {"id": event.id, "result": event.result})
-                elif isinstance(event, Done):
-                    yield format_sse(
-                        "done",
-                        {"message_id": event.message_id, "usage": event.usage},
-                    )
-        except Exception:  # surface a generic SSE error, never a broken stream
-            logger.exception("regenerate stream failed for chat %s", chat_id)
-            yield format_sse(
-                "error", {"message": "Internal server error while streaming the reply"}
-            )
+            model, last_user_content, history = await service.regenerate_turn(user.id, chat_id)
+        except ChatNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
+            ) from None
+        except NoUserMessageError:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="No user message to regenerate"
+            ) from None
+        except (ModelUnavailableError, ModelProviderError) as exc:
+            _raise_for_model_error(exc)
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers=SSE_HEADERS,
-    )
+        async def event_stream() -> AsyncIterator[str]:
+            try:
+                async for event in service.stream_turn(
+                    chat_id, model, last_user_content, history, user_id=user.id
+                ):
+                    if isinstance(event, Delta):
+                        yield format_sse("delta", {"text": event.text})
+                    elif isinstance(event, ToolCall):
+                        yield format_sse(
+                            "tool-call", {"id": event.id, "name": event.name, "args": event.args}
+                        )
+                    elif isinstance(event, ToolResult):
+                        yield format_sse("tool-result", {"id": event.id, "result": event.result})
+                    elif isinstance(event, Done):
+                        yield format_sse(
+                            "done",
+                            {"message_id": event.message_id, "usage": event.usage},
+                        )
+            except Exception:  # surface a generic SSE error, never a broken stream
+                logger.exception("regenerate stream failed for chat %s", chat_id)
+                yield format_sse(
+                    "error", {"message": "Internal server error while streaming the reply"}
+                )
+            finally:
+                lock.release()
+
+        response = StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers=SSE_HEADERS,
+        )
+        handed_off = True
+        return response
+    finally:
+        if not handed_off:
+            lock.release()

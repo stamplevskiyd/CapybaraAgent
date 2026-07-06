@@ -89,6 +89,39 @@ class PartialThenFailAgent(BaseAgent):
         raise RuntimeError(self._message)
 
 
+class SlowStreamAgent(FakeAgent):
+    """FakeAgent whose stream yields after an await, so concurrent turns overlap.
+
+    The ``asyncio.sleep`` hands control back to the event loop mid-turn, making
+    interleaving of two same-chat requests observable in tests.
+    """
+
+    async def stream_reply(  # type: ignore[override]
+        self,
+        model_name: str,
+        user_content: str,
+        history,  # type: ignore[no-untyped-def]
+        acc: ReplyAccumulator,
+        tools=(),  # type: ignore[no-untyped-def]
+    ):
+        """Sleep to yield the loop, then emit the configured text as one delta."""
+        import asyncio
+
+        await asyncio.sleep(0.05)
+        acc.text += self._output_text
+        yield StreamedText(text=self._output_text)
+        acc.model = "test"
+
+    async def run_structured[T](  # type: ignore[override]
+        self, model_name: str, system_prompt: str, user_content: str, output_type: type[T]
+    ) -> T:
+        """Return empty structured output so post-turn auto-capture cleanly finds nothing."""
+        model = TestModel(custom_output_args={"facts": []}, call_tools=[])
+        agent: Agent[None, T] = Agent(model, system_prompt=system_prompt, output_type=output_type)
+        result = await agent.run(user_content)
+        return result.output
+
+
 class StubMemoryAgent(FakeAgent):
     """FakeAgent with a fixed embedding map and canned structured extraction output.
 

@@ -21,6 +21,7 @@ from support import (
     PartialThenFailAgent,  # noqa: F401
     RaisingAgent,
     ScriptedToolAgent,
+    SlowStreamAgent,
 )
 
 
@@ -114,6 +115,32 @@ async def test_send_message_streams_sse_and_persists(client: AsyncClient) -> Non
     fetched = await client.get(f"/chats/{chat_id}")
     roles = [m["role"] for m in fetched.json()["messages"]]
     assert roles == ["user", "assistant"]
+
+
+async def test_concurrent_sends_to_same_chat_do_not_interleave(
+    client: AsyncClient, settings: Settings
+) -> None:
+    """Two overlapping sends on one chat serialize into clean user/assistant pairs.
+
+    Without a per-chat turn lock the two turns interleave: both user messages land
+    before either assistant reply, producing user,user,assistant,assistant.
+    """
+    import asyncio
+
+    # Slow stream so the two turns genuinely overlap on the event loop.
+    app.dependency_overrides[get_agent] = lambda: SlowStreamAgent(settings, "ok")
+    chat_id = (await client.post("/chats", json={"title": "c", "model": "test-model"})).json()["id"]
+
+    r1, r2 = await asyncio.gather(
+        client.post(f"/chats/{chat_id}/messages", json={"content": "первый"}),
+        client.post(f"/chats/{chat_id}/messages", json={"content": "второй"}),
+    )
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+
+    msgs = (await client.get(f"/chats/{chat_id}")).json()["messages"]
+    roles = [m["role"] for m in msgs]
+    assert roles == ["user", "assistant", "user", "assistant"], roles
 
 
 async def test_chat_stream_has_sse_no_buffer_headers(client: AsyncClient) -> None:
