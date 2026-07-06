@@ -47,3 +47,24 @@ test('stream returns the streaming response when ok', async () => {
   expect(res.ok).toBe(true)
   expect(res.body).not.toBeNull()
 })
+
+describe('eventStream', () => {
+  test('opens a GET stream to the given path with the auth header', async () => {
+    let seenMethod = ''
+    let seenAuth: string | null = null
+    server.use(
+      http.get('/api/events', ({ request }) => {
+        seenMethod = request.method
+        seenAuth = request.headers.get('Authorization')
+        return new HttpResponse('event: memory-save\ndata: {}\n\n', {
+          headers: { 'Content-Type': 'text/event-stream' },
+        })
+      }),
+    )
+    const api = createApiClient({ getToken: () => 'tok', onUnauthorized: () => {} })
+    const res = await api.eventStream('/events')
+    expect(res.ok).toBe(true)
+    expect(seenMethod).toBe('GET')
+    expect(seenAuth).toBe('Bearer tok')
+  })
+})

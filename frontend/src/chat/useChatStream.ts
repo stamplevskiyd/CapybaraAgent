@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApiClient } from '../auth/AuthContext'
 import { parseSse } from '../api/sse'
 import { getChat } from './chatApi'
+import { applyMemorySave, type MemorySaveEvent } from './memorySave'
 
 export type ToolCallState = {
   id: string
@@ -55,6 +56,36 @@ export function useChatStream(chatId: string | null, onTitle?: (title: string) =
 
   // Abort on unmount (e.g. logout) so a backgrounded stream never updates a dead component.
   useEffect(() => () => abortRef.current?.abort(), [])
+
+  // Open the per-user push channel once for the lifetime of this screen. It delivers
+  // background events (currently memory-save) that arrive after a reply's own stream has
+  // closed. Best-effort: a missed event is restored on the next history load.
+  useEffect(() => {
+    const controller = new AbortController()
+    let stopped = false
+    ;(async () => {
+      while (!stopped) {
+        try {
+          const res = await api.eventStream('/events', controller.signal)
+          if (!res.body) throw new Error('no stream')
+          for await (const ev of parseSse(res.body, controller.signal)) {
+            if (ev.event === 'memory-save') {
+              const evt = JSON.parse(ev.data) as MemorySaveEvent
+              setMessages((prev) => applyMemorySave(prev, evt))
+            }
+          }
+        } catch {
+          if (stopped || controller.signal.aborted) return
+        }
+        if (stopped) return
+        await new Promise((r) => setTimeout(r, 2000)) // backoff before reconnect
+      }
+    })()
+    return () => {
+      stopped = true
+      controller.abort()
+    }
+  }, [api])
 
   /** Loads the chat history and initializes the message list. */
   const loadHistory = useCallback(async () => {
