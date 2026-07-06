@@ -9,6 +9,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from capybara.agent.base import (
     BaseAgent,
+    EmbeddingDimensionError,
     EmbeddingModelUnavailableError,
     ModelProviderError,
 )
@@ -72,6 +73,11 @@ class OllamaAgent(BaseAgent):
         try:
             response.raise_for_status()
             data = response.json()
-            return [list(vector) for vector in data["embeddings"]]
+            vectors = [list(vector) for vector in data["embeddings"]]
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise ModelProviderError(self._settings.ollama_base_url) from exc
+        expected = self._settings.embedding_dimensions
+        for vector in vectors:
+            if len(vector) != expected:
+                raise EmbeddingDimensionError(expected, len(vector), self._settings.embedding_model)
+        return vectors

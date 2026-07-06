@@ -92,6 +92,26 @@ class EmbeddingModelUnavailableError(Exception):
         )
 
 
+class EmbeddingDimensionError(Exception):
+    """Raised when the provider returns embeddings of an unexpected dimensionality.
+
+    Distinct from a provider outage: Ollama answered, but the vectors do not match the
+    dimensionality the ``facts.embedding`` column expects (usually because a different
+    embedding model was configured). Caught early so the failure is an actionable config
+    error, not a late 500 on the DB write.
+    """
+
+    def __init__(self, expected: int, actual: int, model_name: str) -> None:
+        """Record the expected vs actual dimensions and the embedding model in use."""
+        self.expected = expected
+        self.actual = actual
+        self.model_name = model_name
+        super().__init__(
+            f"Embedding model {model_name!r} returned {actual}-dim vectors, "
+            f"but {expected} dimensions are expected. Check the configured embedding model."
+        )
+
+
 @dataclass
 class StreamedText:
     """A streamed text delta from the model."""

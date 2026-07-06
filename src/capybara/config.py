@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
 
     embedding_model: str = "nomic-embed-text"
+    # Expected embedding dimensionality; must match ``facts.embedding`` (EMBEDDING_DIM
+    # in capybara.db.models.fact) or writes will fail. Validated in the agent's embed().
+    embedding_dimensions: int = 768
     memory_recall_k: int = 5
     memory_recall_min_similarity: float = 0.3
     memory_dedup_threshold: float = 0.9

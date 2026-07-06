@@ -1,13 +1,20 @@
 import httpx
 import pytest
 
-from capybara.agent.base import EmbeddingModelUnavailableError, ModelProviderError
+from capybara.agent.base import (
+    EmbeddingDimensionError,
+    EmbeddingModelUnavailableError,
+    ModelProviderError,
+)
 from capybara.agent.ollama import OllamaAgent
 from capybara.config import Settings
 
 
 def _settings() -> Settings:
-    return Settings(jwt_secret="x" * 32, embedding_model="nomic-embed-text")
+    # embedding_dimensions=2 so the small stub vectors below satisfy validation.
+    return Settings(
+        jwt_secret="x" * 32, embedding_model="nomic-embed-text", embedding_dimensions=2
+    )
 
 
 async def test_ollama_embed_posts_and_parses() -> None:
@@ -28,6 +35,25 @@ async def test_ollama_embed_posts_and_parses() -> None:
     assert vectors == [[0.1, 0.2], [0.3, 0.4]]
     assert captured["url"].endswith("/api/embed")  # type: ignore[union-attr]
     assert "nomic-embed-text" in captured["json"]  # type: ignore[operator]
+
+
+async def test_ollama_embed_wrong_dimension_raises_dimension_error() -> None:
+    """A vector whose length != the expected dim fails fast, not late on the DB write."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # 3-dim vector while settings expect 2 → mismatch (mirrors a swapped embedding model).
+        return httpx.Response(200, json={"embeddings": [[0.1, 0.2, 0.3]]})
+
+    class MockedOllama(OllamaAgent):
+        def _client_factory(self) -> httpx.AsyncClient:
+            return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    agent = MockedOllama(_settings())
+    with pytest.raises(EmbeddingDimensionError) as exc_info:
+        await agent.embed(["hi"])
+    message = str(exc_info.value)
+    assert "2" in message  # expected dimension
+    assert "3" in message  # actual dimension
 
 
 async def test_ollama_embed_404_raises_embedding_model_unavailable() -> None:
