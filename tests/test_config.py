@@ -40,6 +40,40 @@ def test_settings_rejects_short_jwt_secret(monkeypatch):
         Settings()
 
 
+_FAKE_COMMITTED = "committed-insecure-shared-dev-secret-32b!"
+
+
+def test_prod_rejects_committed_jwt_secret(monkeypatch):
+    """In prod, reusing the shared .env.defaults secret must fail fast."""
+    import capybara.config as cfg
+
+    monkeypatch.setattr(cfg, "_committed_jwt_secret", lambda: _FAKE_COMMITTED)
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("JWT_SECRET", _FAKE_COMMITTED)
+    with pytest.raises(ValidationError):
+        Settings()
+
+
+def test_prod_accepts_rotated_jwt_secret(monkeypatch):
+    """A prod secret distinct from the committed default is accepted."""
+    import capybara.config as cfg
+
+    monkeypatch.setattr(cfg, "_committed_jwt_secret", lambda: _FAKE_COMMITTED)
+    monkeypatch.setenv("APP_ENV", "prod")
+    monkeypatch.setenv("JWT_SECRET", "a-freshly-rotated-unique-prod-secret-32b")
+    assert Settings().app_env == "prod"
+
+
+def test_dev_allows_committed_jwt_secret(monkeypatch):
+    """Dev (the default) intentionally allows the shared committed secret."""
+    import capybara.config as cfg
+
+    monkeypatch.setattr(cfg, "_committed_jwt_secret", lambda: _FAKE_COMMITTED)
+    monkeypatch.setenv("JWT_SECRET", _FAKE_COMMITTED)
+    settings = Settings()
+    assert settings.app_env == "dev"
+
+
 def test_memory_settings_have_defaults() -> None:
     from capybara.config import Settings
 

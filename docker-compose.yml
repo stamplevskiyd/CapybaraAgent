@@ -8,7 +8,9 @@ services:
       - path: .env
         required: false
     ports:
-      - "5432:5432"
+      # Bind to loopback only — this is a local-first app with default dev
+      # credentials; the DB must not be reachable from the LAN.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +37,9 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8000:8000"
+      # Bind to loopback only — a local-first app ships a shared dev JWT secret,
+      # so exposing the auth endpoints on the LAN means forgeable tokens.
+      - "127.0.0.1:8000:8000"
     # Bind-mount the source so host code edits reload without rebuilding. Only
     # ./src is mounted (never the whole repo), so the container's /app/.venv —
     # built for the image's platform — is not shadowed by the host's.
