@@ -1,5 +1,29 @@
 import '@testing-library/jest-dom/vitest'
+import { transferableAbortController } from 'node:util'
 import { server } from './msw'
+
+// The jsdom environment shadows AbortController/AbortSignal with jsdom's own
+// implementations, while fetch stays Node's undici. On Node 25+ undici brand-checks
+// RequestInit.signal against its internal native class (not instanceof), so every
+// fetch carrying a jsdom-realm signal dies with "Expected signal to be an instance
+// of AbortSignal" before the request is even made — which broke all streaming tests.
+// Restore the true natives (reachable via node:util's transferableAbortController,
+// which constructs a real one) as the globals the app code will instantiate.
+const nativeController = transferableAbortController()
+const NativeAbortController = nativeController.constructor as typeof AbortController
+const NativeAbortSignal = nativeController.signal.constructor as typeof AbortSignal
+if (globalThis.AbortSignal !== NativeAbortSignal) {
+  for (const target of [globalThis, globalThis.window]) {
+    Object.defineProperty(target, 'AbortController', {
+      configurable: true,
+      value: NativeAbortController,
+    })
+    Object.defineProperty(target, 'AbortSignal', {
+      configurable: true,
+      value: NativeAbortSignal,
+    })
+  }
+}
 
 // Node 24+ ships an experimental global `localStorage` (Web Storage) that has no
 // usable backing store unless `--localstorage-file` is set, so it shadows jsdom's
