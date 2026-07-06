@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { prismTheme } from './prismTheme'
+import './prismLanguages'
 import styles from './CodeBlock.module.css'
 
 export function CodeBlock({ code, language }: { code: string; language?: string }) {
