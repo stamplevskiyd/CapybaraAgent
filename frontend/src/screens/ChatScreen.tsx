@@ -7,6 +7,7 @@ import { Composer } from '../components/Composer'
 import { Thread } from '../components/Thread'
 import { Sidebar } from '../components/Sidebar'
 import { MemoryScreen } from './MemoryScreen'
+import { McpScreen } from './McpScreen'
 import { useAuth, useApiClient } from '../auth/AuthContext'
 import { useChats } from '../chat/useChats'
 import { useModels } from '../chat/useModels'
@@ -37,7 +38,7 @@ export function ChatScreen() {
   const api = useApiClient()
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [draftModel, setDraftModel] = useState<string | null>(() => loadLastModel())
-  const [view, setView] = useState<'chat' | 'memory'>('chat')
+  const [view, setView] = useState<'chat' | 'memory' | 'mcp'>('chat')
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem('capybara.sidebarCollapsed') === '1'
@@ -194,6 +195,8 @@ export function ChatScreen() {
           onDelete={handleDelete}
           onOpenMemory={() => setView('memory')}
           memoryActive={view === 'memory'}
+          onOpenMcp={() => setView('mcp')}
+          mcpActive={view === 'mcp'}
         />
         <main className={styles.main}>
           {sidebarCollapsed && (
@@ -208,6 +211,8 @@ export function ChatScreen() {
           )}
           {view === 'memory' ? (
             <MemoryScreen />
+          ) : view === 'mcp' ? (
+            <McpScreen />
           ) : activeChatId === null ? (
             <div className={styles.welcome}>
               <div className={styles.welcomeContent}>
