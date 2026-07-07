@@ -1,6 +1,6 @@
 /** Sidebar: logo, new-chat, search, favorites + date-grouped chat list, deferred nav, user card. */
 import { useState } from 'react'
-import { Plus, Search, Brain, Clock, Settings, Star, PanelLeft } from 'lucide-react'
+import { Plus, Search, Brain, Server, Clock, Settings, Star, PanelLeft } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { ChatListItem } from './ChatListItem'
 import { ChatContextMenu } from './ChatContextMenu'
@@ -44,6 +44,8 @@ export function Sidebar({
   onDelete,
   onOpenMemory,
   memoryActive,
+  onOpenMcp,
+  mcpActive,
 }: {
   chats: ChatOut[]
   activeChatId: string | null
@@ -60,6 +62,10 @@ export function Sidebar({
   onOpenMemory: () => void
   /** True when the «Память» screen is the active view (highlights the nav item). */
   memoryActive: boolean
+  /** Open the standalone «MCP-серверы» screen. */
+  onOpenMcp: () => void
+  /** True when the «MCP-серверы» screen is the active view. */
+  mcpActive: boolean
 }) {
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null)
@@ -152,6 +158,16 @@ export function Sidebar({
         </div>
 
         <div className={styles.bottomBlock}>
+          <button
+            type="button"
+            className={
+              mcpActive ? `${styles.navButton} ${styles.navButtonActive}` : styles.navButton
+            }
+            onClick={onOpenMcp}
+          >
+            <Server size={16} />
+            MCP-серверы
+          </button>
           <button
             type="button"
             className={

@@ -21,6 +21,8 @@ test('deferred nav items are disabled; Память is an enabled button', () =>
         onDelete={() => {}}
         onOpenMemory={() => {}}
         memoryActive={false}
+        onOpenMcp={() => {}}
+        mcpActive={false}
       />
     </AuthProvider>,
   )
@@ -52,6 +54,8 @@ test('favorites appear under an Избранное group above date groups', () 
         onDelete={() => {}}
         onOpenMemory={() => {}}
         memoryActive={false}
+        onOpenMcp={() => {}}
+        mcpActive={false}
       />
     </AuthProvider>,
   )
