@@ -31,12 +31,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application with all routers."""
     fastapi_app = FastAPI(title="CapybaraAgent", lifespan=lifespan)
-    from capybara.api.routers import auth, chats, events, health, memory, models, users
+    from capybara.api.routers import auth, chats, events, health, mcp, memory, models, users
 
     fastapi_app.include_router(health.router)
     fastapi_app.include_router(chats.router)
     fastapi_app.include_router(events.router)
     fastapi_app.include_router(memory.router)
+    fastapi_app.include_router(mcp.router)
     fastapi_app.include_router(models.router)
     fastapi_app.include_router(users.router)
     fastapi_app.include_router(auth.router)

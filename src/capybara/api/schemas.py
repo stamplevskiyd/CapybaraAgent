@@ -249,3 +249,64 @@ class MemorySettingsUpdate(BaseModel):
     """Request schema for updating the memory auto-capture toggle."""
 
     auto_capture: bool
+
+
+class McpServerCreate(BaseModel):
+    """Payload to attach an MCP server."""
+
+    name: str = Field(min_length=1, max_length=200)
+    url: str = Field(min_length=1)
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
+class McpServerUpdate(BaseModel):
+    """Partial update for an MCP server. At least one field must be provided."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    url: str | None = Field(default=None, min_length=1)
+    headers: dict[str, str] | None = None
+    enabled: bool | None = None
+
+    @model_validator(mode="after")
+    def _require_one(self) -> McpServerUpdate:
+        """Reject an empty patch."""
+        if self.name is None and self.url is None and self.headers is None and self.enabled is None:
+            raise ValueError("at least one field must be provided")
+        return self
+
+
+class McpToolUpdate(BaseModel):
+    """Payload to toggle a tool's enabled flag."""
+
+    enabled: bool
+
+
+class McpToolOut(BaseModel):
+    """Response schema for a single discovered MCP tool."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    description: str | None
+    enabled: bool
+
+
+class McpServerOut(BaseModel):
+    """Response schema for an MCP server with its tools.
+
+    Note: ``headers`` is intentionally omitted — auth headers are secrets and are
+    write-only over the API (never echoed back in responses).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    url: str
+    enabled: bool
+    last_connected_at: datetime | None
+    last_error: str | None
+    created_at: datetime
+    updated_at: datetime
+    tools: list[McpToolOut]

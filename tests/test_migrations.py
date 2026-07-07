@@ -131,3 +131,35 @@ async def test_messages_has_memory_saves_column(migrated_engine: AsyncEngine) ->
     async with migrated_engine.connect() as conn:
         cols = await conn.run_sync(_columns)
     assert "memory_saves" in cols
+
+
+async def test_migrations_create_mcp_tables(migrated_engine: AsyncEngine) -> None:
+    """The MCP migration creates mcp_servers and mcp_tools at head."""
+    async with migrated_engine.connect() as conn:
+        tables = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = 'public'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {"mcp_servers", "mcp_tools"} <= set(tables)
+
+        cols = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'mcp_servers'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {"headers", "enabled", "last_connected_at", "last_error"} <= set(cols)

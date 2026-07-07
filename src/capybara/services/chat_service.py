@@ -8,6 +8,7 @@ from uuid import UUID
 import anyio
 from pydantic_ai import Tool
 from pydantic_ai.messages import ModelMessage
+from pydantic_ai.toolsets import AbstractToolset
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent.base import (
@@ -23,6 +24,7 @@ from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
 from capybara.services.events import Delta, Done, StreamEvent, ToolCall, ToolResult
+from capybara.services.mcp_service import McpService
 from capybara.services.memory_service import MemoryService
 from capybara.services.memory_tools import make_recall_tool
 
@@ -100,6 +102,7 @@ class ChatService:
         agent: BaseAgent,
         memory_service: MemoryService | None = None,
         turn_locks: ChatTurnLocks | None = None,
+        mcp_service: McpService | None = None,
     ) -> None:
         self._sessionmaker = sessionmaker
         self._agent = agent
@@ -107,6 +110,7 @@ class ChatService:
         # A standalone registry by default keeps unit tests self-contained; the app wires
         # the shared registry so locks span concurrent requests.
         self._turn_locks = turn_locks or ChatTurnLocks()
+        self._mcp_service = mcp_service
 
     async def acquire_turn_lock(self, chat_id: UUID) -> TurnLockLease:
         """Acquire this chat's turn lock and return an idempotently-releasable lease.
@@ -186,11 +190,14 @@ class ChatService:
         tools: list[Tool[None]] = []
         if user_id is not None and self._memory_service is not None:
             tools.append(make_recall_tool(self._memory_service, user_id))
+        toolsets: list[AbstractToolset[None]] = []
+        if user_id is not None and self._mcp_service is not None:
+            toolsets = await self._mcp_service.build_toolsets(user_id)
         acc = ReplyAccumulator()
         completed = False
         try:
             async for event in self._agent.stream_reply(
-                model_name, user_content, history, acc, tools=tools
+                model_name, user_content, history, acc, tools=tools, toolsets=toolsets
             ):
                 if isinstance(event, StreamedText):
                     yield Delta(text=event.text)
