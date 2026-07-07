@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ConnectWizard } from './ConnectWizard'
 import { ApiError } from '../api/client'
@@ -27,6 +27,7 @@ test('submits name/url and shows the success step with tools', async () => {
 
   expect(onConnect).toHaveBeenCalledWith('github', 'https://mcp.example/github', {})
   expect(await screen.findByText('Сервер подключён')).toBeInTheDocument()
+  expect(screen.getByText('Обнаружено 1 инструмент')).toBeInTheDocument()
   expect(screen.getByText('search')).toBeInTheDocument()
 
   await userEvent.click(screen.getByRole('button', { name: 'Готово' }))
@@ -79,6 +80,8 @@ test('does not close modal when clicking X during checking step', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
   expect(onClose).not.toHaveBeenCalled()
 
-  // Cleanup: resolve the promise
-  resolveConnect!(created)
+  // Cleanup: resolve the pending promise inside act so the success-state update is flushed
+  await act(async () => {
+    resolveConnect!(created)
+  })
 })

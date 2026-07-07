@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Plug, Plus, X } from 'lucide-react'
 import { ApiError } from '../api/client'
 import type { McpServerOut } from '../api/types'
+import { pluralTools } from './plural'
 import styles from './ConnectWizard.module.css'
 
 type Step = 'form' | 'checking' | 'success' | 'error'
@@ -181,7 +182,7 @@ export function ConnectWizard({
             <div className={styles.centered}>
               <div className={styles.successIcon}>✓</div>
               <span className={styles.title}>Сервер подключён</span>
-              <span className={styles.subtitle}>Обнаружено {result.tools.length}</span>
+              <span className={styles.subtitle}>Обнаружено {result.tools.length} {pluralTools(result.tools.length)}</span>
             </div>
             <div className={styles.chips}>
               {result.tools.map((t) => (

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { pluralFacts, pluralServers } from './plural'
+import { pluralFacts, pluralServers, pluralTools } from './plural'
 
 test('russian plural for facts', () => {
   expect(pluralFacts(1)).toBe('факт')
@@ -17,4 +17,11 @@ test('pluralServers', () => {
   expect(pluralServers(3)).toBe('сервера')
   expect(pluralServers(5)).toBe('серверов')
   expect(pluralServers(11)).toBe('серверов')
+})
+
+test('pluralTools', () => {
+  expect(pluralTools(1)).toBe('инструмент')
+  expect(pluralTools(3)).toBe('инструмента')
+  expect(pluralTools(5)).toBe('инструментов')
+  expect(pluralTools(11)).toBe('инструментов')
 })

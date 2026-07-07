@@ -3,16 +3,8 @@ import { useState } from 'react'
 import { RotateCw, Trash2 } from 'lucide-react'
 import type { McpServerOut } from '../api/types'
 import { McpToolChip } from './McpToolChip'
+import { pluralTools } from './plural'
 import styles from './McpServerCard.module.css'
-
-/** Russian plural for «инструмент»: 1 → инструмент, 2–4 → инструмента, else → инструментов. */
-function pluralTools(n: number): string {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return 'инструмент'
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'инструмента'
-  return 'инструментов'
-}
 
 export function McpServerCard({
   server,
@@ -82,7 +74,7 @@ export function McpServerCard({
         </div>
       </div>
 
-      {server.last_error && <div className={styles.error}>{server.last_error}</div>}
+      {server.last_error !== null && <div className={styles.error}>{server.last_error}</div>}
 
       <div className={styles.toolCount}>
         {server.tools.length} {pluralTools(server.tools.length)}

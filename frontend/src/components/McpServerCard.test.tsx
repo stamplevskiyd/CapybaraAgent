@@ -64,3 +64,19 @@ test('confirms before deleting', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Удалить сервер' }))
   expect(onDelete).toHaveBeenCalled()
 })
+
+test('does not call onDelete when confirm is cancelled', async () => {
+  const onDelete = vi.fn()
+  vi.spyOn(window, 'confirm').mockReturnValue(false)
+  render(
+    <McpServerCard
+      server={server}
+      onToggle={noop}
+      onRefresh={async () => {}}
+      onDelete={onDelete}
+      onToggleTool={noop}
+    />,
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Удалить сервер' }))
+  expect(onDelete).not.toHaveBeenCalled()
+})
