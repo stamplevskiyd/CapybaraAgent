@@ -82,7 +82,9 @@ export function ConnectWizard({
             <span className={styles.title}>Подключение MCP-сервера</span>
             <span className={styles.subtitle}>Локально · ключи не покидают устройство</span>
           </div>
-          <button type="button" className={styles.close} aria-label="Закрыть" onClick={onClose}>
+          <button type="button" className={styles.close} aria-label="Закрыть" onClick={() => {
+            if (step !== 'checking') onClose()
+          }}>
             <X size={16} />
           </button>
         </div>

@@ -61,3 +61,24 @@ test('shows the error detail and allows going back', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Назад' }))
   expect(screen.getByLabelText('Название')).toHaveValue('x')
 })
+
+test('does not close modal when clicking X during checking step', async () => {
+  let resolveConnect: (value: McpServerOut) => void
+  const onConnect = vi.fn()
+    .mockImplementation(() => new Promise((resolve) => {
+      resolveConnect = resolve
+    }))
+  const onClose = vi.fn()
+  render(<ConnectWizard onConnect={onConnect} onClose={onClose} />)
+
+  await userEvent.type(screen.getByLabelText('Название'), 'test')
+  await userEvent.type(screen.getByLabelText('URL'), 'https://example.com')
+  await userEvent.click(screen.getByRole('button', { name: 'Подключить' }))
+
+  expect(await screen.findByText('Проверяем соединение…')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
+  expect(onClose).not.toHaveBeenCalled()
+
+  // Cleanup: resolve the promise
+  resolveConnect!(created)
+})
