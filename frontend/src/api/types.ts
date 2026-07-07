@@ -73,3 +73,28 @@ export interface FactUpdate {
 export interface MemorySettings {
   auto_capture: boolean
 }
+
+export interface McpToolOut {
+  id: string
+  name: string
+  description: string | null
+  enabled: boolean
+}
+
+export interface McpServerOut {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  last_connected_at: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+  tools: McpToolOut[]
+}
+
+export interface McpServerCreate {
+  name: string
+  url: string
+  headers?: Record<string, string>
+}
