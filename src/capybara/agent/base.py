@@ -152,7 +152,7 @@ def _coerce_tool_args(args: object) -> dict[str, Any]:
     if isinstance(args, str):
         try:
             parsed = json.loads(args)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return {}
         return parsed if isinstance(parsed, dict) else {}
     return {}

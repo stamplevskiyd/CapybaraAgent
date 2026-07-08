@@ -1,5 +1,7 @@
 """Pydantic request/response schemas for the chat, memory, user, and auth APIs."""
 
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID

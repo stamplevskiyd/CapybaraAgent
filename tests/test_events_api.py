@@ -87,7 +87,7 @@ class _StreamingASGITransport(AsyncBaseTransport):
                 app_task.cancel()
                 try:
                     await app_task
-                except asyncio.CancelledError, Exception:
+                except (asyncio.CancelledError, Exception):
                     pass
 
         return Response(status_holder[0], headers=raw_headers, stream=_Body())
