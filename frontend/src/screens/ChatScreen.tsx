@@ -11,7 +11,7 @@ import { McpScreen } from './McpScreen'
 import { useAuth, useApiClient } from '../auth/AuthContext'
 import { useChats } from '../chat/useChats'
 import { useModels } from '../chat/useModels'
-import { useChatStream } from '../chat/useChatStream'
+import { useChainlitThread } from '../chainlit/useChainlitThread'
 import { useChatRuntime } from '../chat/runtime'
 import { deleteChat, renameChat, setFavorite, patchChatModel } from '../chat/chatApi'
 import { loadLastModel, saveLastModel } from '../chat/lastModel'
@@ -65,9 +65,7 @@ export function ChatScreen() {
   const { chats, reload, newChat, patchLocal, removeLocal } = useChats()
   const { models } = useModels()
   const { messages, sending, loadingHistory, send, loadHistory, cancel, regenerate } =
-    useChatStream(activeChatId, (title) => {
-      if (activeChatId) patchLocal(activeChatId, { title })
-    })
+    useChainlitThread()
 
   /**
    * Load history whenever the active chat changes.
@@ -94,8 +92,7 @@ export function ChatScreen() {
     const modelValid = selectedModel !== null && models.includes(selectedModel)
     if (!modelValid) return
     if (activeChatId) {
-      // No reload: the reply streams in place and any title change arrives via the
-      // SSE `title` event (→ patchLocal). A full list refetch per message is wasteful.
+      // No reload: Chainlit streams the reply into the active thread state.
       await send(text)
       return
     }

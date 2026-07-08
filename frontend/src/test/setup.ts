@@ -59,6 +59,20 @@ for (const target of [globalThis, globalThis.window]) {
   })
 }
 
+if (typeof URL.createObjectURL === 'undefined') {
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: () => 'blob:capybara-test-url',
+  })
+}
+
+if (typeof URL.revokeObjectURL === 'undefined') {
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    configurable: true,
+    value: () => {},
+  })
+}
+
 beforeEach(() => memoryStorage.clear())
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())

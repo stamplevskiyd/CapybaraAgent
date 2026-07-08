@@ -1,8 +1,47 @@
-import { render, screen, waitFor, waitForElementToBeRemoved } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { server, http, HttpResponse } from '../test/msw'
 import { AuthProvider } from '../auth/AuthContext'
 import { ChatScreen } from './ChatScreen'
+
+vi.mock('../chainlit/useChainlitThread', async () => {
+  const React = await vi.importActual<typeof import('react')>('react')
+  type Message = {
+    id: string
+    role: 'user' | 'assistant'
+    content: string
+    streaming: boolean
+  }
+  let nextId = 0
+
+  return {
+    useChainlitThread: () => {
+      const [messages, setMessages] = React.useState<Message[]>([])
+      const send = React.useCallback(async (content: string) => {
+        setMessages((prev) => [
+          ...prev,
+          { id: `user-${nextId++}`, role: 'user', content, streaming: false },
+          {
+            id: `assistant-${nextId++}`,
+            role: 'assistant',
+            content: 'Здравствуйте',
+            streaming: false,
+          },
+        ])
+      }, [])
+
+      return {
+        messages,
+        sending: false,
+        loadingHistory: false,
+        send,
+        loadHistory: async () => {},
+        cancel: () => {},
+        regenerate: async () => {},
+      }
+    },
+  }
+})
 
 // ThreadPrimitive.Viewport uses ResizeObserver and scrollTo for autoscroll detection;
 // jsdom does not provide these, so install no-op stubs.
@@ -178,7 +217,7 @@ test('the sidebar can be collapsed and expanded via the toggle buttons', async (
   expect(screen.queryByLabelText('Развернуть панель')).toBeNull()
 })
 
-test('shows a loading indicator while chat history is being fetched', async () => {
+test('selecting an existing chat no longer fetches legacy message history', async () => {
   const chat = {
     id: 'c2',
     title: 'Мой чат',
@@ -188,18 +227,15 @@ test('shows a loading indicator while chat history is being fetched', async () =
     updated_at: '',
   }
 
-  let resolveChat!: () => void
-  const chatDelay = new Promise<void>((r) => {
-    resolveChat = r
-  })
+  let legacyHistoryRequests = 0
 
   server.use(
     http.get('/api/models', () =>
       HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
     ),
     http.get('/api/chats', () => HttpResponse.json([chat])),
-    http.get('/api/chats/:id', async () => {
-      await chatDelay
+    http.get('/api/chats/:id', () => {
+      legacyHistoryRequests++
       return HttpResponse.json({ ...chat, messages: [] })
     }),
   )
@@ -213,12 +249,7 @@ test('shows a loading indicator while chat history is being fetched', async () =
   // Wait for the sidebar chat item to appear, then click to select the chat
   await userEvent.click(await screen.findByText('Мой чат'))
 
-  // Loading indicator should appear while history is being fetched
-  expect(await screen.findByRole('status')).toBeInTheDocument()
-
-  // Resolve the delayed response so history loading completes
-  resolveChat()
-
-  // Loading indicator should disappear once the request settles
-  await waitForElementToBeRemoved(() => screen.queryByRole('status'))
+  expect(screen.getAllByText('Мой чат').length).toBeGreaterThan(1)
+  await new Promise<void>((r) => setTimeout(r, 20))
+  expect(legacyHistoryRequests).toBe(0)
 })

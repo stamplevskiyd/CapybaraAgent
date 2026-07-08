@@ -1,24 +1,30 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { IStep } from '@chainlit/react-client'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { useChainlitThread } from './useChainlitThread'
 
 const chainlitHooks = vi.hoisted(() => ({
+  connect: vi.fn(),
+  disconnect: vi.fn(),
   sendMessage: vi.fn(),
   stopTask: vi.fn(),
   useChatData: vi.fn(),
   useChatInteract: vi.fn(),
   useChatMessages: vi.fn(),
+  useChatSession: vi.fn(),
 }))
 
 vi.mock('@chainlit/react-client', () => ({
   useChatData: chainlitHooks.useChatData,
   useChatInteract: chainlitHooks.useChatInteract,
   useChatMessages: chainlitHooks.useChatMessages,
+  useChatSession: chainlitHooks.useChatSession,
 }))
 
 describe('useChainlitThread', () => {
   beforeEach(() => {
+    chainlitHooks.connect.mockReset()
+    chainlitHooks.disconnect.mockReset()
     chainlitHooks.sendMessage.mockReset()
     chainlitHooks.stopTask.mockReset()
     chainlitHooks.useChatData.mockReturnValue({ loading: false })
@@ -27,6 +33,17 @@ describe('useChainlitThread', () => {
       stopTask: chainlitHooks.stopTask,
     })
     chainlitHooks.useChatMessages.mockReturnValue({ messages: [] })
+    chainlitHooks.useChatSession.mockReturnValue({
+      connect: chainlitHooks.connect,
+      disconnect: chainlitHooks.disconnect,
+      session: undefined,
+    })
+  })
+
+  test('connects the Chainlit session when mounted', async () => {
+    renderHook(() => useChainlitThread())
+
+    await waitFor(() => expect(chainlitHooks.connect).toHaveBeenCalledWith({ userEnv: {} }))
   })
 
   test('returns converted Chainlit messages in the existing UI shape', () => {
