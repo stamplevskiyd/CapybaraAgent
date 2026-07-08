@@ -7,6 +7,9 @@ dependencies = [
     "uvicorn[standard]>=0.50",
     "chainlit>=2.0",
     "deepagents>=0.1",
+    # Temporary migration compatibility: old routers/services still import
+    # pydantic-ai until Task 14 removes the legacy chat runtime.
+    "pydantic-ai>=2.5",
     "langchain>=0.3",
     "langchain-core>=0.3",
     "langchain-ollama>=0.2",
