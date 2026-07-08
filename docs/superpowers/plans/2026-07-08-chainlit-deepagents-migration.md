@@ -4,9 +4,9 @@
 
 **Goal:** Migrate CapybaraAgent from a hand-rolled FastAPI/SSE/pydantic-ai chat runtime to a Chainlit + DeepAgents runtime while preserving the custom Capybara design, current features, and planned product surfaces.
 
-**Architecture:** Use FastAPI as the outer ASGI shell and mount Chainlit at `/chainlit`, so existing custom REST surfaces for memory, MCP, models, profiles, and future tasks can coexist with Chainlit-managed chat sessions. Keep the React design shell, but replace the custom chat SSE/runtime adapter with a Chainlit React-client adapter. Replace the pydantic-ai agent layer with a DeepAgents runner that emits Chainlit messages/steps instead of manually parsing tool-call events.
+**Architecture:** Use option 1: keep FastAPI as a thin domain/API shell and mount Chainlit at `/chainlit`, so existing custom REST surfaces for memory, MCP, models, profiles, and future tasks can coexist with Chainlit-managed chat sessions. FastAPI is not responsible for the chat runtime and is not required for preserving the design; it is retained because it is the cleanest host for Capybara's non-chat product APIs during this migration. Keep the React design shell, replace the custom chat SSE/runtime adapter with a Chainlit React-client adapter, and replace the pydantic-ai agent layer with a DeepAgents runner that emits Chainlit messages/steps instead of manually parsing tool-call events.
 
-**Tech Stack:** Python 3.12/3.13 compatibility target, FastAPI shell, Chainlit mounted app, DeepAgents/LangGraph/LangChain, Ollama via LangChain providers, PostgreSQL + SQLAlchemy for domain tables, Chainlit data layer for threads/steps, Vite + React + TypeScript custom UI.
+**Tech Stack:** Python 3.12/3.13 compatibility target, thin FastAPI domain/API shell, mounted Chainlit runtime, DeepAgents/LangGraph/LangChain, Ollama via LangChain providers, PostgreSQL + SQLAlchemy for domain tables, Chainlit data layer for threads/steps, Vite + React + TypeScript custom UI.
 
 ---
 
@@ -75,12 +75,14 @@ Docs:
 
 ## Migration Principles
 
+- Chosen architecture: FastAPI shell + mounted Chainlit. This is a pragmatic migration boundary, not a requirement imposed by Chainlit or by the design.
 - Keep the custom React design shell. Do not use the stock Chainlit UI as the user-facing app.
 - Prefer Chainlit/DeepAgents primitives over custom protocol parsing.
 - Keep domain services small. Memory, MCP, profiles, and scheduled tasks are product logic, not chat-transport logic.
 - Use a strangler path: add new runtime beside old runtime, switch one boundary at a time, then delete old code.
 - Tests come first for every boundary replacement.
 - Commit after each task.
+- After parity, reassess whether any remaining FastAPI endpoints are still valuable. If Chainlit covers a domain cleanly without awkward code, collapse that endpoint into the Chainlit side then.
 
 ---
 
@@ -165,9 +167,13 @@ surfaces.
 
 ## Architecture
 
-FastAPI remains the outer ASGI app. Chainlit is mounted under `/chainlit` and owns chat
-session lifecycle, message streaming, steps, and thread persistence. Custom REST routers
-continue to serve memory, MCP, model settings, local profiles, and future task APIs.
+Chosen option: **FastAPI shell + mounted Chainlit**.
+
+FastAPI remains as a thin domain/API shell. Chainlit is mounted under `/chainlit` and owns
+chat session lifecycle, message streaming, steps, and thread persistence. FastAPI does not
+preserve the UI design; the custom React shell does. FastAPI stays because it is the
+cleanest host for memory, MCP, model settings, local profiles, and future task APIs during
+the migration.
 
 The frontend remains the existing Vite/React design shell. Its chat runtime adapter moves
 from custom fetch/SSE parsing to Chainlit's React client. Existing Memory and MCP screens
@@ -191,11 +197,13 @@ runtime and protocol dependency, not the visible design system.
 
 ## Migration Strategy
 
-1. Prove Chainlit can be mounted beside FastAPI and consumed by the custom React app.
+1. Prove Chainlit can be mounted beside the thin FastAPI domain shell and consumed by the
+   custom React app.
 2. Switch chat transport to Chainlit while keeping domain APIs stable.
 3. Switch agent execution to DeepAgents.
 4. Port memory and MCP tools to DeepAgents.
 5. Reset persistence and remove old hand-written SSE/tool-call code.
+6. Reassess whether FastAPI is still needed for any remaining domain APIs after parity.
 
 ## Risks
 
