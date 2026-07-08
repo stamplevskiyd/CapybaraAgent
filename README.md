@@ -4,8 +4,9 @@ A **local-first AI agent** with a desktop chat UI. Everything runs on your machi
 profiles, chats, keys, and long-term memory stay local. Chat streams from a local
 [Ollama](https://ollama.com) model; memory recalls facts via on-device embeddings.
 
-Stack: FastAPI + SSE, PostgreSQL (pgvector), SQLAlchemy-async + Alembic, pydantic-ai,
-Vite + React frontend — orchestrated with Docker Compose.
+Stack during the migration branch: thin FastAPI domain/API shell + mounted Chainlit runtime,
+DeepAgents/LangChain for agent execution, PostgreSQL (pgvector), SQLAlchemy-async + Alembic,
+and a custom Vite + React frontend — orchestrated with Docker Compose.
 
 ## Quickstart
 
@@ -124,6 +125,9 @@ Attach/refresh errors are reported loudly: unreachable → `502`, bad handshake 
 is a TODO for a follow-up slice. Do not store high-value secrets until that lands.
 
 ## Development
+
+The backend targets Python 3.12/3.13 while Chainlit and DeepAgents compatibility is being
+established.
 
 ```bash
 uv sync                                        # install backend deps

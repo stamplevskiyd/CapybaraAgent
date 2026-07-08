@@ -1,11 +1,18 @@
 [project]
 name = "capybara"
 version = "0.1.0"
-requires-python = ">=3.14"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "fastapi>=0.139",
     "uvicorn[standard]>=0.50",
-    "pydantic-ai>=2.5",
+    "chainlit>=2.0",
+    "deepagents>=0.1",
+    "langchain>=0.3",
+    "langchain-core>=0.3",
+    "langchain-ollama>=0.2",
+    "langchain-openai>=0.2",
+    "langchain-mcp-adapters>=0.1",
+    "langgraph>=0.2",
     "pydantic-settings>=2.14",
     "sqlalchemy[asyncio]>=2.0.51, <3.0",
     "asyncpg>=0.31",
@@ -51,7 +58,7 @@ convention = "google"
 "src/capybara/migrations/versions/**" = ["D"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 strict = true
 mypy_path = "src"
 plugins = ["pydantic.mypy"]
