@@ -117,9 +117,15 @@ class DeepAgentRunner:
 
     def _normalize_event(self, event: dict[str, object]) -> RunnerEvent | None:
         """Map LangGraph event dictionaries into Capybara runner events."""
-        if event.get("event") != "on_chat_model_stream":
-            return None
+        kind = event.get("event")
+        if kind == "on_chat_model_stream":
+            return self._normalize_text(event)
+        if kind in ("on_tool_start", "on_tool_end"):
+            return self._normalize_tool(event, kind)
+        return None
 
+    def _normalize_text(self, event: dict[str, object]) -> RunnerEvent | None:
+        """Extract a streamed text token from a chat-model-stream event."""
         data = event.get("data")
         if not isinstance(data, dict):
             return None
@@ -133,6 +139,26 @@ class DeepAgentRunner:
             return RunnerEvent(kind="text", content=content)
 
         return None
+
+    def _normalize_tool(self, event: dict[str, object], graph_event: str) -> RunnerEvent:
+        """Turn a tool start/end event into a runner event keyed by its run id.
+
+        The run id correlates the start and end so the UI can open a step on start and
+        finalize the same step on end; the input (start) or output (end) rides in the
+        payload.
+        """
+        opening = graph_event == "on_tool_start"
+        name = event.get("name")
+        data = event.get("data")
+        field = "input" if opening else "output"
+        payload: dict[str, Any] = {"run_id": event.get("run_id")}
+        if isinstance(data, dict):
+            payload[field] = data.get(field)
+        return RunnerEvent(
+            kind="tool_start" if opening else "tool_end",
+            name=str(name) if name is not None else None,
+            payload=payload,
+        )
 
 
 def build_graph(

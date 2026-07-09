@@ -1,7 +1,7 @@
 """Chainlit callbacks for CapybaraAgent chat runtime."""
 
-from collections.abc import AsyncIterator
-from typing import Protocol, cast
+from collections.abc import AsyncIterator, Callable
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import chainlit as cl
@@ -39,6 +39,26 @@ class MessageSink(Protocol):
     async def send(self) -> None:
         """Finalize the visible response."""
         ...
+
+
+class StepSink(Protocol):
+    """Subset of Chainlit Step used to render a tool call."""
+
+    input: Any
+    output: Any
+
+    async def send(self) -> None:
+        """Open the step in the UI."""
+        ...
+
+    async def update(self) -> None:
+        """Finalize the step after the tool returns."""
+        ...
+
+
+def _new_tool_step(name: str) -> StepSink:
+    """Create a Chainlit tool step for a tool call."""
+    return cast(StepSink, cl.Step(name=name, type="tool"))
 
 
 _runtime_runner: Runner | None = None
@@ -139,11 +159,32 @@ async def stream_agent_message(
     model: str,
     thread_id: str,
     response: MessageSink,
+    new_step: Callable[[str], StepSink] = _new_tool_step,
 ) -> None:
-    """Stream one runner response into a Chainlit message sink."""
+    """Stream one runner response into a Chainlit message sink.
+
+    Text streams into *response*; tool calls open a Chainlit step on ``tool_start`` and
+    finalize it (with the tool's output) on ``tool_end``, correlated by the run id in the
+    event payload.
+    """
+    steps: dict[str, StepSink] = {}
     async for event in runner.stream(content, model=model, thread_id=thread_id):
+        payload = event.payload or {}
         if event.kind == "text" and event.content:
             await response.stream_token(event.content)
+        elif event.kind == "tool_start":
+            step = new_step(event.name or "tool")
+            step.input = payload.get("input")
+            await step.send()
+            run_id = payload.get("run_id")
+            if run_id is not None:
+                steps[str(run_id)] = step
+        elif event.kind == "tool_end":
+            run_id = payload.get("run_id")
+            ended = steps.pop(str(run_id), None) if run_id is not None else None
+            if ended is not None:
+                ended.output = payload.get("output")
+                await ended.update()
     await response.send()
 
 
