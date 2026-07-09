@@ -61,6 +61,21 @@ runtime and protocol dependency, not the visible design system.
 5. Reset persistence and remove old hand-written SSE/tool-call code.
 6. Reassess whether FastAPI is still needed for any remaining domain APIs after parity.
 
+## User identity in the Chainlit runtime (decided 2026-07-09)
+
+Per-user tools (memory recall, MCP) need the caller's `user_id`, but the Chainlit runtime
+has none — the REST side authenticates via a JWT bearer, and the runtime did not. Decision:
+**reuse the existing JWT via Chainlit's `header_auth_callback`.** The backend decodes the
+`Authorization: Bearer` header, resolves the user, and returns a `cl.User` carrying
+`user_id` in metadata; a `tool_provider` then builds per-user tools each turn from that id.
+
+Consequences: enabling any Chainlit auth callback makes auth global and requires
+`CHAINLIT_AUTH_SECRET`, so the frontend must attach the stored JWT to Chainlit's
+`/auth/header` request in the *same* change — this is one coupled slice, not a bolt-on.
+`build_graph` is now built per turn (via `DeepAgentRunner`'s `graph_factory` +
+`tool_provider` seam) so the selected model and per-user tools can be injected; the recall
+tool is ported to LangChain in `capybara.agent.deep_tools`.
+
 ## Risks
 
 - Chainlit React client may not expose every thread-metadata operation needed by the
