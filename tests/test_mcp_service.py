@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent import mcp as mcp_adapter
+from capybara.agent.deep_tools import McpServerSpec
 from capybara.agent.mcp import DiscoveredTool, McpUnreachableError
 from capybara.services.mcp_service import McpService
 
@@ -119,6 +120,35 @@ async def test_build_toolsets_skips_unreachable(
 
     toolsets = await service.build_toolsets(user.id)
     assert toolsets == []  # skipped, no exception
+
+
+async def test_enabled_tool_specs_returns_langchain_ready_specs(
+    session: AsyncSession,
+    make_user,
+    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
+) -> None:
+    """enabled_tool_specs yields one spec per enabled server, enabled tools only."""
+    user = await make_user(session)
+
+    async def fake_discover(url, headers):  # type: ignore[no-untyped-def]
+        return [DiscoveredTool("turn_on", "d", {}), DiscoveredTool("turn_off", None, None)]
+
+    monkeypatch.setattr(mcp_adapter, "discover", fake_discover)
+    service = McpService(_maker(session))
+    server, tools = await service.attach(user.id, "home", "http://ha/mcp", {"X-Api-Key": "k"})
+    off = next(t for t in tools if t.name == "turn_off")
+    await service.set_tool_enabled(user.id, server.id, off.id, enabled=False)
+
+    specs = await service.enabled_tool_specs(user.id)
+
+    assert specs == [
+        McpServerSpec(
+            prefix="home",
+            url="http://ha/mcp",
+            headers={"X-Api-Key": "k"},
+            enabled_tools=frozenset({"turn_on"}),
+        )
+    ]
 
 
 async def test_refresh_removes_tools_no_longer_reported(

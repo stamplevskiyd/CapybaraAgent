@@ -9,6 +9,7 @@ from pydantic_ai.toolsets import AbstractToolset
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent import mcp as mcp_adapter
+from capybara.agent.deep_runtime import McpServerSpec
 from capybara.agent.mcp import McpProtocolError, McpUnreachableError
 from capybara.db.models import McpServer, McpTool
 from capybara.filters import FieldEquals
@@ -209,6 +210,31 @@ class McpService:
             await session.commit()
             await session.refresh(tool)
             return tool
+
+    async def enabled_tool_specs(self, user_id: UUID) -> list[McpServerSpec]:
+        """Return LangChain-ready specs for the user's enabled servers (enabled tools only).
+
+        Unlike ``build_toolsets`` (pydantic-ai), no reachability preflight happens here: the
+        DeepAgents loader connects when it builds the tools, so that connect doubles as the
+        preflight and a dead server is dropped there. Kept alongside ``build_toolsets`` until
+        the pydantic-ai path is removed.
+        """
+        async with self._sessionmaker() as session:
+            servers = await McpServerRepo(session).list(
+                FieldEquals(McpServer.user_id, user_id), FieldEquals(McpServer.enabled, True)
+            )
+            trepo = McpToolRepo(session)
+            return [
+                McpServerSpec(
+                    prefix=_slug(s.name),
+                    url=s.url,
+                    headers=dict(s.headers),
+                    enabled_tools=frozenset(
+                        t.name for t in await trepo.list_for_server(s.id) if t.enabled
+                    ),
+                )
+                for s in servers
+            ]
 
     async def build_toolsets(self, user_id: UUID) -> list[AbstractToolset[None]]:
         """Build agent-ready toolsets for the user's enabled servers (enabled tools only).

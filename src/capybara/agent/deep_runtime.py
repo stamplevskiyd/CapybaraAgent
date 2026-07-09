@@ -39,6 +39,22 @@ ToolLike = BaseTool | Callable[..., Any] | dict[str, Any]
 GraphFactory = Callable[[Sequence["ToolLike"], str], EventStreamingGraph]
 
 
+@dataclass(frozen=True)
+class McpServerSpec:
+    """One enabled MCP server's connection details and the tool names it may expose.
+
+    ``prefix`` (the server slug) namespaces every tool as ``{prefix}_{name}`` so names never
+    collide across servers, matching how the tools are exposed to the model. Defined here (a
+    services-free module) so both the MCP service and the tool builder can share it without
+    an import cycle.
+    """
+
+    prefix: str
+    url: str
+    headers: dict[str, str]
+    enabled_tools: frozenset[str]
+
+
 class ToolProvider(Protocol):
     """Supplies the tools a turn's agent graph should expose."""
 
