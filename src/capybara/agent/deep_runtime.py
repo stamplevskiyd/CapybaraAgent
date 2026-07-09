@@ -33,12 +33,52 @@ class EventStreamingGraph(Protocol):
         ...
 
 
-class DeepAgentRunner:
-    """Run a DeepAgents graph and normalize its events for Chainlit."""
+ToolLike = BaseTool | Callable[..., Any] | dict[str, Any]
 
-    def __init__(self, graph: EventStreamingGraph) -> None:
-        """Store the compiled graph."""
+#: Build a graph for one turn from that turn's tools and selected model.
+GraphFactory = Callable[[Sequence["ToolLike"], str], EventStreamingGraph]
+
+
+class ToolProvider(Protocol):
+    """Supplies the tools a turn's agent graph should expose."""
+
+    async def tools_for(self, thread_id: str) -> Sequence[ToolLike]:
+        """Return the tools available to the agent for *thread_id*."""
+        ...
+
+
+class DeepAgentRunner:
+    """Run a DeepAgents graph and normalize its events for Chainlit.
+
+    Either a fixed *graph* is streamed on every turn, or a *graph_factory* rebuilds the
+    graph per turn from the selected model and the *tool_provider*'s tools — the latter is
+    what lets per-user memory/MCP tools reach the model, since a startup graph cannot know
+    the caller.
+    """
+
+    def __init__(
+        self,
+        graph: EventStreamingGraph | None = None,
+        *,
+        graph_factory: GraphFactory | None = None,
+        tool_provider: ToolProvider | None = None,
+    ) -> None:
+        """Store either a fixed graph or a per-turn factory (with optional tool provider)."""
+        if graph is None and graph_factory is None:
+            raise ValueError("DeepAgentRunner requires either a graph or a graph_factory")
         self._graph = graph
+        self._graph_factory = graph_factory
+        self._tool_provider = tool_provider
+
+    async def _graph_for_turn(self, model: str, thread_id: str) -> EventStreamingGraph:
+        """Return the fixed graph, or build a fresh one from this turn's tools and model."""
+        if self._graph_factory is None:
+            assert self._graph is not None  # guaranteed by __init__
+            return self._graph
+        tools: Sequence[ToolLike] = []
+        if self._tool_provider is not None:
+            tools = await self._tool_provider.tools_for(thread_id)
+        return self._graph_factory(tools, model)
 
     async def stream(
         self,
@@ -48,12 +88,13 @@ class DeepAgentRunner:
         thread_id: str,
     ) -> AsyncIterator[RunnerEvent]:
         """Stream normalized text/tool events for one user message."""
+        graph = await self._graph_for_turn(model, thread_id)
         payload: dict[str, object] = {
             "messages": [{"role": "user", "content": content}],
             "model": model,
         }
         config = {"configurable": {"thread_id": thread_id}}
-        async for event in self._graph.astream_events(payload, version="v2", config=config):
+        async for event in graph.astream_events(payload, version="v2", config=config):
             normalized = self._normalize_event(event)
             if normalized is not None:
                 yield normalized
@@ -78,14 +119,20 @@ class DeepAgentRunner:
         return None
 
 
-ToolLike = BaseTool | Callable[..., Any] | dict[str, Any]
+def build_graph(
+    settings: Settings,
+    tools: Sequence[ToolLike] | None = None,
+    *,
+    model: str | None = None,
+) -> EventStreamingGraph:
+    """Build the DeepAgents graph for Capybara chat runs.
 
-
-def build_graph(settings: Settings, tools: Sequence[ToolLike] | None = None) -> EventStreamingGraph:
-    """Build the DeepAgents graph for Capybara chat runs."""
+    *model* selects the chat model for the turn; it falls back to the configured default so
+    startup builds and toolless tests need not pass one.
+    """
     registry = ModelRegistry(settings)
     graph = create_deep_agent(
-        model=registry.chat_model(settings.default_model),
+        model=registry.chat_model(model or settings.default_model),
         tools=list(tools or []),
         system_prompt=(
             "You are CapybaraAgent, a local-first assistant. Use available tools when "
