@@ -4,6 +4,34 @@ import { server, http, HttpResponse } from '../test/msw'
 import { AuthProvider } from '../auth/AuthContext'
 import { ChatScreen } from './ChatScreen'
 
+// This test exercises navigation, not the chat runtime; mock the Chainlit hook so ChatScreen
+// renders without a live Recoil/Chainlit session (which it otherwise requires).
+vi.mock('../chainlit/useChainlitThread', () => ({
+  useChainlitThread: () => ({
+    messages: [],
+    sending: false,
+    loadingHistory: false,
+    send: async () => {},
+    loadHistory: async () => {},
+    cancel: () => {},
+    regenerate: async () => {},
+  }),
+}))
+
+// ThreadPrimitive.Viewport uses ResizeObserver and scrollTo, which jsdom lacks; stub them.
+beforeAll(() => {
+  if (typeof globalThis.ResizeObserver === 'undefined') {
+    globalThis.ResizeObserver = class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+  }
+  if (typeof HTMLElement.prototype.scrollTo === 'undefined') {
+    HTMLElement.prototype.scrollTo = () => {}
+  }
+})
+
 beforeEach(() =>
   localStorage.setItem('capybara.session', JSON.stringify({ token: 't', username: 'r' })),
 )
