@@ -12,6 +12,8 @@ const chainlitHooks = vi.hoisted(() => ({
   useChatInteract: vi.fn(),
   useChatMessages: vi.fn(),
   useChatSession: vi.fn(),
+  fetch: vi.fn(),
+  token: { value: null as string | null },
 }))
 
 vi.mock('@chainlit/react-client', () => ({
@@ -21,12 +23,23 @@ vi.mock('@chainlit/react-client', () => ({
   useChatSession: chainlitHooks.useChatSession,
 }))
 
+vi.mock('./client', () => ({
+  chainlitClient: { fetch: chainlitHooks.fetch },
+}))
+
+vi.mock('../auth/AuthContext', () => ({
+  useAuth: () => ({ token: chainlitHooks.token.value }),
+}))
+
 describe('useChainlitThread', () => {
   beforeEach(() => {
     chainlitHooks.connect.mockReset()
     chainlitHooks.disconnect.mockReset()
     chainlitHooks.sendMessage.mockReset()
     chainlitHooks.stopTask.mockReset()
+    chainlitHooks.fetch.mockReset()
+    chainlitHooks.fetch.mockResolvedValue({ json: async () => ({}) })
+    chainlitHooks.token.value = null
     chainlitHooks.useChatData.mockReturnValue({ loading: false })
     chainlitHooks.useChatInteract.mockReturnValue({
       sendMessage: chainlitHooks.sendMessage,
@@ -44,6 +57,33 @@ describe('useChainlitThread', () => {
     renderHook(() => useChainlitThread())
 
     await waitFor(() => expect(chainlitHooks.connect).toHaveBeenCalledWith({ userEnv: {} }))
+  })
+
+  test('authenticates with the app JWT before connecting when a token is present', async () => {
+    chainlitHooks.token.value = 'jwt-123'
+
+    renderHook(() => useChainlitThread())
+
+    await waitFor(() =>
+      expect(chainlitHooks.fetch).toHaveBeenCalledWith(
+        'POST',
+        '/auth/header',
+        undefined,
+        undefined,
+        { Authorization: 'Bearer jwt-123' },
+      ),
+    )
+    await waitFor(() => expect(chainlitHooks.connect).toHaveBeenCalledWith({ userEnv: {} }))
+    expect(chainlitHooks.fetch.mock.invocationCallOrder[0]).toBeLessThan(
+      chainlitHooks.connect.mock.invocationCallOrder[0],
+    )
+  })
+
+  test('skips the auth handshake when there is no token', async () => {
+    renderHook(() => useChainlitThread())
+
+    await waitFor(() => expect(chainlitHooks.connect).toHaveBeenCalled())
+    expect(chainlitHooks.fetch).not.toHaveBeenCalled()
   })
 
   test('returns converted Chainlit messages in the existing UI shape', () => {
