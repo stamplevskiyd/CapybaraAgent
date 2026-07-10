@@ -66,10 +66,21 @@ def create_app() -> FastAPI:
     # Chainlit signs its own session cookie with this secret once any auth callback is
     # registered; reuse the app's JWT secret so local runs need no extra configuration.
     os.environ.setdefault("CHAINLIT_AUTH_SECRET", get_settings().jwt_secret)
-    from capybara.api.routers import auth, chats, events, health, mcp, memory, models, users
+    from capybara.api.routers import (
+        auth,
+        chat_prefs,
+        chats,
+        events,
+        health,
+        mcp,
+        memory,
+        models,
+        users,
+    )
 
     app.include_router(health.router)
     app.include_router(chats.router)
+    app.include_router(chat_prefs.router)
     app.include_router(events.router)
     app.include_router(memory.router)
     app.include_router(mcp.router)

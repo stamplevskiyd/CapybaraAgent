@@ -312,3 +312,20 @@ class McpServerOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     tools: list[McpToolOut]
+
+
+class ChatPrefOut(BaseModel):
+    """Response schema for a thread's per-user preferences."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    thread_id: UUID
+    is_favorite: bool
+    model: str | None
+
+
+class ChatPrefUpsert(BaseModel):
+    """Request schema to set a thread's favorite flag and selected model."""
+
+    is_favorite: bool = False
+    model: str | None = Field(default=None, max_length=200)

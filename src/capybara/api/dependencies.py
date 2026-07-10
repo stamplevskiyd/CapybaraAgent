@@ -18,6 +18,7 @@ from capybara.repositories.message_repo import MessageRepo
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
 from capybara.services.auth_service import AuthService
+from capybara.services.chat_pref_service import ChatPrefService
 from capybara.services.chat_service import ChatService, ChatTurnLocks
 from capybara.services.event_bus import EventBus
 from capybara.services.mcp_service import McpService
@@ -155,6 +156,13 @@ def get_mcp_service(
 ) -> McpService:
     """Return an McpService that owns short-lived sessions from the app sessionmaker."""
     return McpService(sessionmaker)
+
+
+def get_chat_pref_service(
+    sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
+) -> ChatPrefService:
+    """Return a ChatPrefService that owns short-lived sessions from the app sessionmaker."""
+    return ChatPrefService(sessionmaker)
 
 
 def get_fact_repo(
