@@ -4,7 +4,6 @@ from capybara.agent.errors import (
     EmbeddingDimensionError,
     EmbeddingModelUnavailableError,
     ModelProviderError,
-    ModelUnavailableError,
 )
 from capybara.agent.model_registry import ModelRegistry
 
@@ -13,5 +12,4 @@ __all__ = [
     "EmbeddingModelUnavailableError",
     "ModelProviderError",
     "ModelRegistry",
-    "ModelUnavailableError",
 ]

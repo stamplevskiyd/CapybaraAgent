@@ -6,13 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from capybara.agent.errors import EmbeddingModelUnavailableError, ModelProviderError
 from capybara.api.dependencies import get_current_user, get_memory_service, get_owned_fact
-from capybara.api.schemas import (
-    FactCreate,
-    FactOut,
-    FactUpdate,
-    MemorySettingsOut,
-    MemorySettingsUpdate,
-)
+from capybara.api.schemas import FactCreate, FactOut, FactUpdate
 from capybara.db.models import Fact, User
 from capybara.services.memory_service import MemoryService
 
@@ -85,23 +79,3 @@ async def delete_fact(
 ) -> None:
     """Delete a fact owned by the current user (404 if not owned)."""
     await service.delete_fact(user.id, fact.id)
-
-
-@router.get("/settings", response_model=MemorySettingsOut)
-async def get_memory_settings(
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[MemoryService, Depends(get_memory_service)],
-) -> MemorySettingsOut:
-    """Return the current user's auto-capture toggle."""
-    return MemorySettingsOut(auto_capture=await service.get_auto_capture(user.id))
-
-
-@router.patch("/settings", response_model=MemorySettingsOut)
-async def update_memory_settings(
-    payload: MemorySettingsUpdate,
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[MemoryService, Depends(get_memory_service)],
-) -> MemorySettingsOut:
-    """Update the current user's auto-capture toggle."""
-    value = await service.set_auto_capture(user.id, payload.auto_capture)
-    return MemorySettingsOut(auto_capture=value)

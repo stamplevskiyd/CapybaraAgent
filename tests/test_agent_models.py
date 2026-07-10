@@ -5,7 +5,7 @@ import json
 import httpx
 import pytest
 
-from capybara.agent.errors import ModelProviderError, ModelUnavailableError
+from capybara.agent.errors import ModelProviderError
 from capybara.agent.model_registry import ModelRegistry
 from capybara.config import Settings
 
@@ -77,22 +77,3 @@ async def test_list_models_raises_provider_error_when_unreachable(settings: Sett
     agent = _agent_with_transport(settings, handler)
     with pytest.raises(ModelProviderError):
         await agent.list_models()
-
-
-async def test_ensure_available_rejects_unset_and_unknown(settings: Settings) -> None:
-    agent = _agent_with_transport(settings, _capability_handler({"llama3.1:8b": ["completion"]}))
-    with pytest.raises(ModelUnavailableError):
-        await agent.ensure_available(None)
-    with pytest.raises(ModelUnavailableError):
-        await agent.ensure_available("ghost:1b")
-    await agent.ensure_available("llama3.1:8b")  # no raise
-
-
-async def test_ensure_available_returns_the_validated_name(settings: Settings) -> None:
-    """ensure_available narrows str | None to str by returning the validated name.
-
-    Callers can then use the return value directly instead of re-asserting that the
-    optional model is not None after the call.
-    """
-    agent = _agent_with_transport(settings, _capability_handler({"llama3.1:8b": ["completion"]}))
-    assert await agent.ensure_available("llama3.1:8b") == "llama3.1:8b"

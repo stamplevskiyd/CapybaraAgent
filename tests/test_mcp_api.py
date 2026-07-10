@@ -51,7 +51,7 @@ async def mcp_client(engine: AsyncEngine, settings: Settings, make_user):  # typ
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_sessionmaker] = lambda: maker
     app.dependency_overrides[get_settings_dep] = lambda: settings
-    app.dependency_overrides[get_model_registry] = lambda: FakeAgent(settings, output_text="ok")
+    app.dependency_overrides[get_model_registry] = lambda: FakeAgent(settings)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

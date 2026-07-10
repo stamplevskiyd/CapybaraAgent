@@ -14,7 +14,6 @@ from capybara.chainlit_app import configure_chainlit_runtime, current_user_id
 from capybara.chainlit_config import CHAINLIT_PATH, CHAINLIT_TARGET
 from capybara.config import get_settings
 from capybara.db.engine import create_engine, create_sessionmaker
-from capybara.services.event_bus import EventBus
 from capybara.services.mcp_service import McpService
 from capybara.services.memory_service import MemoryService
 
@@ -30,9 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.sessionmaker = sessionmaker
     model_registry = ModelRegistry(settings)
     app.state.model_registry = model_registry
-    app.state.event_bus = EventBus()
     # App-wide services (each owns short-lived sessions) back the per-user tools.
-    memory_service = MemoryService(sessionmaker, model_registry, settings, app.state.event_bus)
+    memory_service = MemoryService(sessionmaker, model_registry, settings)
     app.state.memory_service = memory_service
     mcp_service = McpService(sessionmaker)
     app.state.mcp_service = mcp_service
@@ -67,8 +65,6 @@ def create_app() -> FastAPI:
     from capybara.api.routers import (
         auth,
         chat_prefs,
-        chats,
-        events,
         health,
         mcp,
         memory,
@@ -77,9 +73,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
-    app.include_router(chats.router)
     app.include_router(chat_prefs.router)
-    app.include_router(events.router)
     app.include_router(memory.router)
     app.include_router(mcp.router)
     app.include_router(models.router)

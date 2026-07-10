@@ -1,27 +1,23 @@
-"""Provider-agnostic model listing, embedding, and structured runs over Ollama."""
+"""Provider-agnostic model listing and embedding over Ollama."""
 
 import asyncio
-from typing import cast
 
 import httpx
 from langchain_ollama import ChatOllama
-from pydantic import BaseModel
 
 from capybara.agent.errors import (
     EmbeddingDimensionError,
     EmbeddingModelUnavailableError,
     ModelProviderError,
-    ModelUnavailableError,
 )
 from capybara.config import Settings
 
 
 class ModelRegistry:
-    """List, build, embed, and run structured completions against local-first Ollama.
+    """List and build chat models, and embed text, against local-first Ollama.
 
     The single provider abstraction for the app: the DeepAgents runtime builds chat models
-    here, and the memory/model/chat REST paths list models, validate them, embed text, and
-    run structured extraction through it.
+    here, and the memory/model REST paths list models and embed text through it.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -59,22 +55,6 @@ class ModelRegistry:
         capabilities = response.json().get("capabilities")
         return capabilities is None or "completion" in capabilities
 
-    async def ensure_available(self, model_name: str | None) -> str:
-        """Return *model_name* if set and present in the provider's live list.
-
-        Returning the validated name narrows ``str | None`` to ``str`` for callers.
-
-        Raises:
-            ModelUnavailableError: If *model_name* is ``None`` or absent from the list.
-            ModelProviderError: If the provider cannot be reached.
-        """
-        if not model_name:
-            raise ModelUnavailableError(model_name, [])
-        available = await self.list_models()
-        if model_name not in available:
-            raise ModelUnavailableError(model_name, available)
-        return model_name
-
     def chat_model(self, name: str) -> ChatOllama:
         """Build a LangChain Ollama chat model."""
         return ChatOllama(model=name, base_url=self._settings.ollama_base_url)
@@ -108,18 +88,6 @@ class ModelRegistry:
             if len(vector) != expected:
                 raise EmbeddingDimensionError(expected, len(vector), self._settings.embedding_model)
         return vectors
-
-    async def run_structured[T: BaseModel](
-        self, model_name: str, system_prompt: str, user_content: str, output_type: type[T]
-    ) -> T:
-        """Run a one-shot completion that returns a validated structured result.
-
-        Generic over the output schema so callers own their extraction types; the registry
-        stays domain-agnostic.
-        """
-        model = self.chat_model(model_name).with_structured_output(output_type)
-        result = await model.ainvoke([("system", system_prompt), ("human", user_content)])
-        return cast(T, result)
 
     def _model_names(self, payload: object) -> list[str]:
         """Extract model names from Ollama's native tags response."""

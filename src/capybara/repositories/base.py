@@ -46,12 +46,6 @@ class BaseRepository[ModelT: Base]:
         await self._session.flush()
         return instance
 
-    async def add(self, instance: ModelT) -> ModelT:
-        """Add an already-constructed instance to the session and flush."""
-        self._session.add(instance)
-        await self._session.flush()
-        return instance
-
     async def update(self, instance: ModelT, **fields: Any) -> ModelT:
         """Apply field updates to an instance and flush.
 

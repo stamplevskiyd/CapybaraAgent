@@ -1,16 +1,6 @@
 """Provider (Ollama) error types shared by the model registry and its callers."""
 
 
-class ModelUnavailableError(Exception):
-    """Raised when a chat's model is unset or not present in the provider's live list."""
-
-    def __init__(self, model_name: str | None, available: list[str]) -> None:
-        """Record the offending model name and the list of currently available models."""
-        self.model_name = model_name
-        self.available = available
-        super().__init__(f"Model {model_name!r} is not available. Select an installed model.")
-
-
 class ModelProviderError(Exception):
     """Raised when the model provider (Ollama) cannot be reached at all."""
 

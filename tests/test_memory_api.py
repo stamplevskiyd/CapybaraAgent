@@ -129,12 +129,6 @@ async def test_patch_requires_a_field(client: AsyncClient) -> None:
     assert resp.status_code == 422
 
 
-async def test_settings_toggle(client: AsyncClient) -> None:
-    assert (await client.get("/memory/settings")).json() == {"auto_capture": True}
-    patched = await client.patch("/memory/settings", json={"auto_capture": False})
-    assert patched.status_code == 200 and patched.json() == {"auto_capture": False}
-
-
 async def test_facts_are_per_user_isolated(
     client: AsyncClient, engine: AsyncEngine, settings: Settings, make_user
 ) -> None:  # type: ignore[no-untyped-def]

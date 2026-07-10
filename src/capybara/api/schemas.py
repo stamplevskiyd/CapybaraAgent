@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -57,111 +57,11 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
-class ChatCreate(BaseModel):
-    """Payload for creating a new chat."""
-
-    title: str | None = Field(default=None, max_length=200)
-    model: str | None = Field(default=None, max_length=128)
-
-    @field_validator("title", "model", mode="before")
-    @classmethod
-    def _strip_optional_text(cls, value: object) -> object:
-        """Trim optional text fields when provided and reject whitespace-only values."""
-        if value is None:
-            return None
-        return _strip_required_text(value)
-
-
-class ChatUpdate(BaseModel):
-    """Partial update for a chat: any of title, model, or favorite. At least one required."""
-
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    model: str | None = Field(default=None, min_length=1, max_length=128)
-    is_favorite: bool | None = None
-
-    @field_validator("title", "model", mode="before")
-    @classmethod
-    def _strip_optional_text(cls, value: object) -> object:
-        """Trim optional text fields when provided and reject whitespace-only values."""
-        if value is None:
-            return None
-        return _strip_required_text(value)
-
-    @model_validator(mode="after")
-    def _require_one(self) -> ChatUpdate:
-        """Reject an empty patch — at least one field must be provided."""
-        if self.title is None and self.model is None and self.is_favorite is None:
-            raise ValueError("at least one of title, model, is_favorite must be provided")
-        return self
-
-
 class ModelsOut(BaseModel):
     """Available models for a provider."""
 
     provider: str
     models: list[str]
-
-
-class MessageCreate(BaseModel):
-    """Payload for sending a message."""
-
-    content: str = Field(min_length=1, max_length=100_000)
-
-    @field_validator("content")
-    @classmethod
-    def _content_not_blank(cls, value: str) -> str:
-        """Reject whitespace-only user messages while preserving intentional spacing."""
-        return _reject_blank_text(value)
-
-
-class ToolCallOut(BaseModel):
-    """Response schema for a single tool invocation within an assistant message."""
-
-    id: str
-    name: str
-    args: dict[str, Any]
-    result: str | None
-
-
-class MemorySaveOut(BaseModel):
-    """Response schema for a single fact auto-captured from an assistant turn."""
-
-    content: str
-    category: str
-
-
-class MessageOut(BaseModel):
-    """Response schema for a single message."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    role: str
-    content: str
-    model: str | None
-    incomplete: bool
-    created_at: datetime
-    tool_calls: list[ToolCallOut] | None = None
-    memory_saves: list[MemorySaveOut] | None = None
-
-
-class ChatOut(BaseModel):
-    """Response schema for a chat summary."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    title: str
-    model: str | None
-    is_favorite: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-class ChatDetailOut(ChatOut):
-    """Response schema for a chat with its full message list."""
-
-    messages: list[MessageOut]
 
 
 class LoginRequest(BaseModel):
@@ -239,18 +139,6 @@ class FactOut(BaseModel):
     source: str
     created_at: datetime
     updated_at: datetime
-
-
-class MemorySettingsOut(BaseModel):
-    """Response schema for the memory auto-capture toggle."""
-
-    auto_capture: bool
-
-
-class MemorySettingsUpdate(BaseModel):
-    """Request schema for updating the memory auto-capture toggle."""
-
-    auto_capture: bool
 
 
 class McpServerCreate(BaseModel):

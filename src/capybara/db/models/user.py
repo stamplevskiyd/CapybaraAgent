@@ -18,4 +18,3 @@ class User(Base, TimestampMixin):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(128))
     password_hash: Mapped[str] = mapped_column(String(255))
-    memory_auto_capture: Mapped[bool] = mapped_column(default=True, nullable=False)
