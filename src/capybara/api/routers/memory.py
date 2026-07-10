@@ -4,7 +4,7 @@ from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from capybara.agent.base import EmbeddingModelUnavailableError, ModelProviderError
+from capybara.agent.errors import EmbeddingModelUnavailableError, ModelProviderError
 from capybara.api.dependencies import get_current_user, get_memory_service, get_owned_fact
 from capybara.api.schemas import (
     FactCreate,

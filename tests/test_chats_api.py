@@ -3,8 +3,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from capybara.api.dependencies import (
-    get_agent,
     get_current_user,
+    get_model_registry,
     get_session,
     get_sessionmaker,
     get_settings_dep,
@@ -45,7 +45,7 @@ async def client(engine, settings: Settings, make_user):  # type: ignore[no-unty
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_sessionmaker] = lambda: maker
     app.dependency_overrides[get_settings_dep] = lambda: settings
-    app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "Ответ агента")
+    app.dependency_overrides[get_model_registry] = lambda: FakeAgent(settings, "Ответ агента")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
@@ -131,7 +131,7 @@ async def test_list_models_502_when_provider_unreachable(
         async def list_models(self) -> list[str]:
             raise ModelProviderError(settings.ollama_base_url)
 
-    app.dependency_overrides[get_agent] = lambda: DownAgent(settings, "x")
+    app.dependency_overrides[get_model_registry] = lambda: DownAgent(settings, "x")
     resp = await client.get("/models")
     assert resp.status_code == 502
     assert "unreachable" in resp.json()["detail"].lower()

@@ -5,12 +5,13 @@ import json
 import httpx
 import pytest
 
-from capybara.agent import ModelProviderError, ModelUnavailableError, OllamaAgent
+from capybara.agent.errors import ModelProviderError, ModelUnavailableError
+from capybara.agent.model_registry import ModelRegistry
 from capybara.config import Settings
 
 
-def _agent_with_transport(settings: Settings, handler) -> OllamaAgent:  # type: ignore[no-untyped-def]
-    agent = OllamaAgent(settings)
+def _agent_with_transport(settings: Settings, handler) -> ModelRegistry:  # type: ignore[no-untyped-def]
+    agent = ModelRegistry(settings)
     agent._client_factory = lambda: httpx.AsyncClient(  # type: ignore[attr-defined]
         transport=httpx.MockTransport(handler)
     )

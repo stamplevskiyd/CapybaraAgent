@@ -9,7 +9,7 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from capybara.agent.base import BaseAgent
+from capybara.agent.model_registry import ModelRegistry
 from capybara.config import Settings
 from capybara.db.models import Chat, Fact, User
 from capybara.repositories.chat_repo import ChatRepo
@@ -105,9 +105,9 @@ def get_message_repo(
     return MessageRepo(session)
 
 
-def get_agent(request: Request) -> BaseAgent:
-    """Return the BaseAgent stored on app state."""
-    return cast(BaseAgent, request.app.state.agent)
+def get_model_registry(request: Request) -> ModelRegistry:
+    """Return the ModelRegistry stored on app state."""
+    return cast(ModelRegistry, request.app.state.model_registry)
 
 
 def get_sessionmaker(request: Request) -> async_sessionmaker[AsyncSession]:
@@ -142,12 +142,12 @@ def get_event_bus(request: Request) -> EventBus:
 
 def get_memory_service(
     sessionmaker: Annotated[async_sessionmaker[AsyncSession], Depends(get_sessionmaker)],
-    agent: Annotated[BaseAgent, Depends(get_agent)],
+    registry: Annotated[ModelRegistry, Depends(get_model_registry)],
     settings: Annotated[Settings, Depends(get_settings_dep)],
     event_bus: Annotated[EventBus, Depends(get_event_bus)],
 ) -> MemoryService:
     """Return a MemoryService that owns short-lived sessions and can publish events."""
-    return MemoryService(sessionmaker, agent, settings, event_bus)
+    return MemoryService(sessionmaker, registry, settings, event_bus)
 
 
 def get_mcp_service(

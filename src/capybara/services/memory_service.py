@@ -7,7 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from capybara.agent.base import BaseAgent
+from capybara.agent.model_registry import ModelRegistry
 from capybara.config import Settings
 from capybara.db.models import Fact, Message, User
 from capybara.filters import FieldEquals
@@ -70,13 +70,13 @@ class MemoryService:
     def __init__(
         self,
         sessionmaker: async_sessionmaker[AsyncSession],
-        agent: BaseAgent,
+        registry: ModelRegistry,
         settings: Settings,
         event_bus: EventBus | None = None,
     ) -> None:
-        """Store the sessionmaker, provider agent, settings, and optional event bus."""
+        """Store the sessionmaker, model registry, settings, and optional event bus."""
         self._sessionmaker = sessionmaker
-        self._agent = agent
+        self._registry = registry
         self._settings = settings
         self._event_bus = event_bus
 
@@ -87,7 +87,7 @@ class MemoryService:
 
     async def add_fact(self, user_id: UUID, content: str, category: str) -> Fact:
         """Embed *content* and persist a new manual fact."""
-        [embedding] = await self._agent.embed([content])
+        [embedding] = await self._registry.embed([content])
         async with self._sessionmaker() as session:
             fact = await FactRepo(session).create(
                 user_id=user_id,
@@ -125,7 +125,7 @@ class MemoryService:
             fields["category"] = category
         if content is not None and content != current_content:
             fields["content"] = content
-            [fields["embedding"]] = await self._agent.embed([content])
+            [fields["embedding"]] = await self._registry.embed([content])
         if not fields:
             return fact  # nothing to change; return the row read above
         async with self._sessionmaker() as session:
@@ -151,7 +151,7 @@ class MemoryService:
 
     async def recall(self, user_id: UUID, query: str) -> list[Fact]:
         """Return facts semantically nearest to *query*, filtered by the min-similarity setting."""
-        [embedding] = await self._agent.embed([query])
+        [embedding] = await self._registry.embed([query])
         async with self._sessionmaker() as session:
             results = await FactRepo(session).search(
                 user_id, embedding, self._settings.memory_recall_k
@@ -213,12 +213,12 @@ class MemoryService:
             return
         assistant_id = last_assistant.id
 
-        extracted = await self._agent.run_structured(
+        extracted = await self._registry.run_structured(
             model, EXTRACTION_SYSTEM_PROMPT, turn, ExtractedFacts
         )
         saved: list[ExtractedFact] = []
         for candidate in extracted.facts:
-            [embedding] = await self._agent.embed([candidate.content])
+            [embedding] = await self._registry.embed([candidate.content])
             async with self._sessionmaker() as session:
                 repo = FactRepo(session)
                 nearest = await repo.search(user_id, embedding, 1)

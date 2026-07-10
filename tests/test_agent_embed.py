@@ -1,12 +1,12 @@
 import httpx
 import pytest
 
-from capybara.agent.base import (
+from capybara.agent.errors import (
     EmbeddingDimensionError,
     EmbeddingModelUnavailableError,
     ModelProviderError,
 )
-from capybara.agent.ollama import OllamaAgent
+from capybara.agent.model_registry import ModelRegistry
 from capybara.config import Settings
 
 
@@ -23,7 +23,7 @@ async def test_ollama_embed_posts_and_parses() -> None:
         captured["json"] = httpx.Request.read(request).decode()
         return httpx.Response(200, json={"embeddings": [[0.1, 0.2], [0.3, 0.4]]})
 
-    class MockedOllama(OllamaAgent):
+    class MockedOllama(ModelRegistry):
         def _client_factory(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
@@ -42,7 +42,7 @@ async def test_ollama_embed_wrong_dimension_raises_dimension_error() -> None:
         # 3-dim vector while settings expect 2 → mismatch (mirrors a swapped embedding model).
         return httpx.Response(200, json={"embeddings": [[0.1, 0.2, 0.3]]})
 
-    class MockedOllama(OllamaAgent):
+    class MockedOllama(ModelRegistry):
         def _client_factory(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
@@ -62,7 +62,7 @@ async def test_ollama_embed_404_raises_embedding_model_unavailable() -> None:
             404, json={"error": 'model "nomic-embed-text" not found, try pulling it first'}
         )
 
-    class MockedOllama(OllamaAgent):
+    class MockedOllama(ModelRegistry):
         def _client_factory(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
@@ -80,7 +80,7 @@ async def test_ollama_embed_connection_error_raises_provider_error() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused")
 
-    class MockedOllama(OllamaAgent):
+    class MockedOllama(ModelRegistry):
         def _client_factory(self) -> httpx.AsyncClient:
             return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 

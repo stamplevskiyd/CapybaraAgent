@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from capybara.agent.deep_runtime import DeepAgentRunner, build_graph
 from capybara.agent.deep_tools import CompositeToolProvider, McpToolProvider, MemoryToolProvider
 from capybara.agent.model_registry import ModelRegistry
-from capybara.agent.ollama import OllamaAgent
 from capybara.chainlit_app import configure_chainlit_runtime, current_user_id
 from capybara.chainlit_config import CHAINLIT_PATH, CHAINLIT_TARGET
 from capybara.config import get_settings
@@ -29,12 +28,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.engine = engine
     sessionmaker = create_sessionmaker(engine)
     app.state.sessionmaker = sessionmaker
-    # Compatibility during the migration: legacy /chats routes still use pydantic-ai.
-    app.state.agent = OllamaAgent(settings)
-    app.state.model_registry = ModelRegistry(settings)
+    model_registry = ModelRegistry(settings)
+    app.state.model_registry = model_registry
     app.state.event_bus = EventBus()
     # App-wide services (each owns short-lived sessions) back the per-user tools.
-    memory_service = MemoryService(sessionmaker, app.state.agent, settings, app.state.event_bus)
+    memory_service = MemoryService(sessionmaker, model_registry, settings, app.state.event_bus)
     app.state.memory_service = memory_service
     mcp_service = McpService(sessionmaker)
     app.state.mcp_service = mcp_service

@@ -4,12 +4,13 @@ from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from capybara.agent.base import BaseAgent, ModelProviderError, ModelUnavailableError
+from capybara.agent.errors import ModelProviderError, ModelUnavailableError
+from capybara.agent.model_registry import ModelRegistry
 from capybara.api.dependencies import (
-    get_agent,
     get_chat_repo,
     get_current_user,
     get_message_repo,
+    get_model_registry,
     get_owned_chat,
 )
 from capybara.api.schemas import (
@@ -32,12 +33,12 @@ async def create_chat(
     payload: ChatCreate,
     user: Annotated[User, Depends(get_current_user)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
-    agent: Annotated[BaseAgent, Depends(get_agent)],
+    registry: Annotated[ModelRegistry, Depends(get_model_registry)],
 ) -> ChatOut:
     """Create a new chat for the current user, optionally with a validated model."""
     if payload.model is not None:
         try:
-            await agent.ensure_available(payload.model)
+            await registry.ensure_available(payload.model)
         except (ModelUnavailableError, ModelProviderError) as exc:
             _raise_for_model_error(exc)
     chat = await chats.create(user.id, payload.title, payload.model)
@@ -86,7 +87,7 @@ async def update_chat(
     payload: ChatUpdate,
     chat: Annotated[Chat, Depends(get_owned_chat)],
     chats: Annotated[ChatRepo, Depends(get_chat_repo)],
-    agent: Annotated[BaseAgent, Depends(get_agent)],
+    registry: Annotated[ModelRegistry, Depends(get_model_registry)],
 ) -> ChatOut:
     """Update a chat's title, model, and/or favorite flag; 404 if not owned.
 
@@ -95,7 +96,7 @@ async def update_chat(
     """
     if payload.model is not None:
         try:
-            await agent.ensure_available(payload.model)
+            await registry.ensure_available(payload.model)
         except (ModelUnavailableError, ModelProviderError) as exc:
             _raise_for_model_error(exc)
     updated = await chats.update(chat, **payload.model_dump(exclude_none=True))

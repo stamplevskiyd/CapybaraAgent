@@ -5,8 +5,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from capybara.api.dependencies import (
-    get_agent,
     get_current_user,
+    get_model_registry,
     get_session,
     get_sessionmaker,
     get_settings_dep,
@@ -47,7 +47,7 @@ async def client(engine: AsyncEngine, settings: Settings, make_user):  # type: i
     app.dependency_overrides[get_current_user] = _override_user
     app.dependency_overrides[get_sessionmaker] = lambda: maker
     app.dependency_overrides[get_settings_dep] = lambda: settings
-    app.dependency_overrides[get_agent] = lambda: FakeAgent(settings, "Ответ")
+    app.dependency_overrides[get_model_registry] = lambda: FakeAgent(settings, "Ответ")
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         c.maker = maker  # type: ignore[attr-defined]

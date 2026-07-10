@@ -1,15 +1,17 @@
 """Agent abstractions for LLM interaction."""
 
-from capybara.agent.base import (
-    BaseAgent,
+from capybara.agent.errors import (
+    EmbeddingDimensionError,
+    EmbeddingModelUnavailableError,
     ModelProviderError,
     ModelUnavailableError,
 )
-from capybara.agent.ollama import OllamaAgent
+from capybara.agent.model_registry import ModelRegistry
 
 __all__ = [
-    "BaseAgent",
+    "EmbeddingDimensionError",
+    "EmbeddingModelUnavailableError",
     "ModelProviderError",
+    "ModelRegistry",
     "ModelUnavailableError",
-    "OllamaAgent",
 ]
