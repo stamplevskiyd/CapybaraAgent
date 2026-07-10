@@ -1,16 +1,23 @@
-"""Pydantic request/response schemas for the chat, memory, user, and auth APIs."""
+"""Pydantic request/response schemas for the memory, MCP, user, and auth APIs."""
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 
 def _strip_required_text(value: object) -> object:
-    """Strip a text field and reject it when only whitespace remains."""
+    """Strip a text value and reject it when only whitespace remains."""
     if isinstance(value, str):
         stripped = value.strip()
         if not stripped:
@@ -20,30 +27,24 @@ def _strip_required_text(value: object) -> object:
 
 
 def _reject_blank_text(value: str) -> str:
-    """Reject a text field that contains only whitespace while preserving the original."""
+    """Reject text that contains only whitespace while preserving the original."""
     if not value.strip():
         raise ValueError("must not be blank")
     return value
 
 
+#: Text stripped on input; whitespace-only values are rejected before length checks.
+TrimmedText = Annotated[str, BeforeValidator(_strip_required_text)]
+#: Text kept verbatim (intentional spacing preserved); whitespace-only values are rejected.
+NonBlankText = Annotated[str, AfterValidator(_reject_blank_text)]
+
+
 class UserCreate(BaseModel):
     """Request body for registering a user."""
 
-    display_name: str = Field(min_length=1, max_length=128)
-    username: str = Field(min_length=3, max_length=64)
-    password: str = Field(min_length=8, max_length=128)
-
-    @field_validator("display_name", "username", mode="before")
-    @classmethod
-    def _strip_identity_fields(cls, value: object) -> object:
-        """Trim public identity fields and reject whitespace-only values."""
-        return _strip_required_text(value)
-
-    @field_validator("password")
-    @classmethod
-    def _password_not_blank(cls, value: str) -> str:
-        """Reject whitespace-only passwords without otherwise changing them."""
-        return _reject_blank_text(value)
+    display_name: TrimmedText = Field(min_length=1, max_length=128)
+    username: TrimmedText = Field(min_length=3, max_length=64)
+    password: NonBlankText = Field(min_length=8, max_length=128)
 
 
 class UserOut(BaseModel):
@@ -67,20 +68,8 @@ class ModelsOut(BaseModel):
 class LoginRequest(BaseModel):
     """Request body for logging in."""
 
-    username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=128)
-
-    @field_validator("username", mode="before")
-    @classmethod
-    def _strip_username(cls, value: object) -> object:
-        """Trim the login username and reject whitespace-only values."""
-        return _strip_required_text(value)
-
-    @field_validator("password")
-    @classmethod
-    def _login_password_not_blank(cls, value: str) -> str:
-        """Reject whitespace-only login passwords."""
-        return _reject_blank_text(value)
+    username: TrimmedText = Field(min_length=1, max_length=64)
+    password: NonBlankText = Field(min_length=1, max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -96,29 +85,15 @@ FactCategory = Literal["personal", "project", "preference"]
 class FactCreate(BaseModel):
     """Payload for creating a manual fact."""
 
-    content: str = Field(min_length=1, max_length=2000)
+    content: NonBlankText = Field(min_length=1, max_length=2000)
     category: FactCategory
-
-    @field_validator("content")
-    @classmethod
-    def _content_not_blank(cls, value: str) -> str:
-        """Reject whitespace-only fact content."""
-        return _reject_blank_text(value)
 
 
 class FactUpdate(BaseModel):
     """Partial update for a fact: content and/or category. At least one required."""
 
-    content: str | None = Field(default=None, min_length=1, max_length=2000)
+    content: TrimmedText | None = Field(default=None, min_length=1, max_length=2000)
     category: FactCategory | None = None
-
-    @field_validator("content", mode="before")
-    @classmethod
-    def _strip_optional_content(cls, value: object) -> object:
-        """Trim optional content and reject whitespace-only values."""
-        if value is None:
-            return None
-        return _strip_required_text(value)
 
     @model_validator(mode="after")
     def _require_one(self) -> FactUpdate:

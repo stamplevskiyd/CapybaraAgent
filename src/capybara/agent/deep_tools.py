@@ -11,17 +11,14 @@ from typing import Protocol
 from uuid import UUID
 
 from langchain_core.tools import BaseTool, StructuredTool
-from langchain_mcp_adapters.sessions import StreamableHttpConnection
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from capybara.agent.deep_runtime import McpServerSpec, ToolLike, ToolProvider
+from capybara.agent.mcp import streamable_http_connection
 from capybara.db.models import Fact
 from capybara.services.memory_tools import format_facts
 
 logger = logging.getLogger(__name__)
-
-#: Bound the MCP connect/list so a dead server can't stall a turn.
-_MCP_INIT_TIMEOUT_SECONDS = 10.0
 
 #: Resolve the user whose tools this turn should expose, or None when unauthenticated.
 UserIdGetter = Callable[[], UUID | None]
@@ -68,7 +65,7 @@ class MemoryToolProvider:
         self._memory_service = memory_service
         self._get_user_id = get_user_id
 
-    async def tools_for(self, thread_id: str) -> Sequence[ToolLike]:
+    async def tools(self) -> Sequence[ToolLike]:
         """Return the recall tool bound to this turn's user, or nothing if unresolved."""
         user_id = self._get_user_id()
         if user_id is None or self._memory_service is None:
@@ -82,14 +79,11 @@ McpToolLoader = Callable[[McpServerSpec], Awaitable[list[BaseTool]]]
 
 async def _load_server_tools(spec: McpServerSpec) -> list[BaseTool]:
     """Connect to *spec*'s MCP server and return its tools, each prefixed by the slug."""
-    connection: StreamableHttpConnection = {
-        "transport": "streamable_http",
-        "url": spec.url,
-        "headers": spec.headers or None,
-        "timeout": _MCP_INIT_TIMEOUT_SECONDS,
-    }
     return await load_mcp_tools(
-        None, connection=connection, server_name=spec.prefix, tool_name_prefix=True
+        None,
+        connection=streamable_http_connection(spec.url, spec.headers),
+        server_name=spec.prefix,
+        tool_name_prefix=True,
     )
 
 
@@ -137,7 +131,7 @@ class McpToolProvider:
         self._mcp_service = mcp_service
         self._get_user_id = get_user_id
 
-    async def tools_for(self, thread_id: str) -> Sequence[ToolLike]:
+    async def tools(self) -> Sequence[ToolLike]:
         """Return the current user's MCP tools, or nothing if unresolved."""
         user_id = self._get_user_id()
         if user_id is None or self._mcp_service is None:
@@ -153,9 +147,9 @@ class CompositeToolProvider:
         """Store the child providers to combine, in order."""
         self._providers = providers
 
-    async def tools_for(self, thread_id: str) -> Sequence[ToolLike]:
+    async def tools(self) -> Sequence[ToolLike]:
         """Return every child provider's tools for this turn, in order."""
         tools: list[ToolLike] = []
         for provider in self._providers:
-            tools.extend(await provider.tools_for(thread_id))
+            tools.extend(await provider.tools())
         return tools

@@ -6,21 +6,6 @@ from capybara.db.models import User
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.passwords import hash_password_async
 
-# Name of the unique index on users.username (see the initial migration); a
-# violation of this specific constraint is the only IntegrityError we translate
-# into a 409 UsernameTaken.
-_USERNAME_UNIQUE = "ix_users_username"
-
-
-def _is_username_conflict(err: IntegrityError) -> bool:
-    """Return True only if *err* is a unique violation on the username index."""
-    constraint = getattr(err.orig, "constraint_name", None)
-    if constraint is not None:
-        return bool(constraint == _USERNAME_UNIQUE)
-    # Fall back to matching the constraint name in the driver message when the
-    # DBAPI does not expose it as a structured attribute.
-    return _USERNAME_UNIQUE in str(err.orig)
-
 
 class UsernameTaken(Exception):
     """Raised when registering a username that is already in use."""
@@ -36,10 +21,10 @@ class UserService:
     async def register(self, display_name: str, username: str, password: str) -> User:
         """Create a user; raise UsernameTaken if the username already exists.
 
-        The pre-check covers the common case.  A try/except around the insert
-        catches the rare race where two requests pass the check simultaneously
-        and the second flush violates the unique constraint, mapping *only* that
-        conflict to UsernameTaken (→ 409); any other IntegrityError propagates.
+        The pre-check covers the common case. The unique index on username backstops
+        the race where two registrations pass the check simultaneously — it is the
+        table's only unique constraint, so any integrity failure on this insert is a
+        username collision.
         """
         if await self._users.get_by_username(username) is not None:
             raise UsernameTaken(username)
@@ -51,6 +36,4 @@ class UserService:
                 password_hash=password_hash,
             )
         except IntegrityError as err:
-            if _is_username_conflict(err):
-                raise UsernameTaken(username) from err
-            raise
+            raise UsernameTaken(username) from err

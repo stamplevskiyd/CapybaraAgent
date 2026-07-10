@@ -3,7 +3,6 @@
 from uuid import UUID
 
 from capybara.db.models import McpServer, McpTool
-from capybara.filters import FieldEquals
 from capybara.repositories.base import BaseRepository
 
 
@@ -20,4 +19,4 @@ class McpToolRepo(BaseRepository[McpTool]):
 
     async def list_for_server(self, server_id: UUID) -> list[McpTool]:
         """Return all tools for *server_id*, in creation order."""
-        return await self.list(FieldEquals(McpTool.server_id, server_id))
+        return await self.list(McpTool.server_id == server_id)

@@ -5,7 +5,6 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.db.models import ChatPref
-from capybara.filters import FieldEquals
 from capybara.repositories.chat_pref_repo import ChatPrefRepo
 
 
@@ -23,7 +22,7 @@ class ChatPrefService:
     async def list_prefs(self, user_id: UUID) -> list[ChatPref]:
         """Return all of the user's chat prefs."""
         async with self._sessionmaker() as session:
-            return await ChatPrefRepo(session).list(FieldEquals(ChatPref.user_id, user_id))
+            return await ChatPrefRepo(session).list(ChatPref.user_id == user_id)
 
     async def upsert(
         self, user_id: UUID, thread_id: UUID, *, is_favorite: bool, model: str | None

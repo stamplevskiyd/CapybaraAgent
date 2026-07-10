@@ -39,7 +39,7 @@ class ModelRegistry:
             async with self._client_factory() as client:
                 response = await client.get(f"{base}/api/tags")
                 response.raise_for_status()
-                names = self._model_names(response.json())
+                names = [str(entry["name"]) for entry in response.json()["models"]]
                 flags = await asyncio.gather(*(self._supports_chat(client, name) for name in names))
             return [name for name, keep in zip(names, flags, strict=True) if keep]
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
@@ -88,16 +88,3 @@ class ModelRegistry:
             if len(vector) != expected:
                 raise EmbeddingDimensionError(expected, len(vector), self._settings.embedding_model)
         return vectors
-
-    def _model_names(self, payload: object) -> list[str]:
-        """Extract model names from Ollama's native tags response."""
-        if not isinstance(payload, dict):
-            return []
-        models = payload.get("models")
-        if not isinstance(models, list):
-            return []
-        names: list[str] = []
-        for entry in models:
-            if isinstance(entry, dict) and isinstance(entry.get("name"), str):
-                names.append(entry["name"])
-        return names

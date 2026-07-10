@@ -11,11 +11,14 @@ from capybara.agent.deep_runtime import DeepAgentRunner, build_graph
 from capybara.agent.deep_tools import CompositeToolProvider, McpToolProvider, MemoryToolProvider
 from capybara.agent.model_registry import ModelRegistry
 from capybara.chainlit_app import configure_chainlit_runtime, current_user_id
-from capybara.chainlit_config import CHAINLIT_PATH, CHAINLIT_TARGET
 from capybara.config import get_settings
 from capybara.db.engine import create_engine, create_sessionmaker
 from capybara.services.mcp_service import McpService
 from capybara.services.memory_service import MemoryService
+
+#: Where the Chainlit runtime is mounted and the module defining its callbacks.
+CHAINLIT_PATH = "/chainlit"
+CHAINLIT_TARGET = "src/capybara/chainlit_app.py"
 
 
 @asynccontextmanager
@@ -41,7 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         McpToolProvider(mcp_service, get_user_id=current_user_id),
     )
     app.state.deep_agent_runner = DeepAgentRunner(
-        graph_factory=lambda tools, model: build_graph(settings, tools, model=model),
+        lambda tools, model: build_graph(settings, tools, model=model),
         tool_provider=tool_provider,
     )
     configure_chainlit_runtime(

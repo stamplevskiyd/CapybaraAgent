@@ -84,16 +84,6 @@ async def test_login_oversized_password_422(client: AsyncClient) -> None:
     assert resp.status_code == 422
 
 
-async def test_protected_route_with_token(client: AsyncClient) -> None:
-    """Authenticated request to GET /chats returns 200 with empty list."""
-    token = (
-        await client.post("/auth/login", json={"username": "roman", "password": "password123"})
-    ).json()["access_token"]
-    resp = await client.get("/chats", headers={"Authorization": f"Bearer {token}"})
-    assert resp.status_code == 200
-    assert resp.json() == []
-
-
 async def test_users_me_returns_current_user(client: AsyncClient) -> None:
     """GET /users/me returns the authenticated user's public profile including display_name."""
     token = (
@@ -112,12 +102,7 @@ async def test_users_me_without_token_401(client: AsyncClient) -> None:
     assert (await client.get("/users/me")).status_code == 401
 
 
-async def test_protected_route_without_token_401(client: AsyncClient) -> None:
-    """Request without Authorization header returns 401."""
-    assert (await client.get("/chats")).status_code == 401
-
-
-async def test_protected_route_garbage_token_401(client: AsyncClient) -> None:
+async def test_users_me_garbage_token_401(client: AsyncClient) -> None:
     """Request with a malformed token returns 401."""
-    resp = await client.get("/chats", headers={"Authorization": "Bearer not-a-jwt"})
+    resp = await client.get("/users/me", headers={"Authorization": "Bearer not-a-jwt"})
     assert resp.status_code == 401

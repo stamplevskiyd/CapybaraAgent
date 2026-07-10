@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from capybara.agent.model_registry import ModelRegistry
 from capybara.config import Settings
 from capybara.db.models import Fact
-from capybara.filters import FieldEquals
 from capybara.repositories.fact_repo import FactRepo
 
 
@@ -33,7 +32,7 @@ class MemoryService:
     async def list_facts(self, user_id: UUID) -> list[Fact]:
         """Return the user's facts, newest first."""
         async with self._sessionmaker() as session:
-            return await FactRepo(session).list(FieldEquals(Fact.user_id, user_id))
+            return await FactRepo(session).list(Fact.user_id == user_id)
 
     async def add_fact(self, user_id: UUID, content: str, category: str) -> Fact:
         """Embed *content* and persist a new manual fact."""

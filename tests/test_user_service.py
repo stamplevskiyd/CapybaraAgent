@@ -1,9 +1,6 @@
 """Tests for UserService user registration."""
 
-from typing import Any
-
 import pytest
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import User
@@ -51,24 +48,3 @@ async def test_register_race_maps_integrity_error(session: AsyncSession, make_us
     service = UserService(repo)
     with pytest.raises(UsernameTaken):
         await service.register("Other", "roman", "password123")
-
-
-async def test_register_unrelated_integrity_error_propagates(session: AsyncSession) -> None:
-    """An IntegrityError on a different constraint is not masked as UsernameTaken."""
-    repo = UserRepo(session)
-
-    async def _always_none(username: str) -> None:
-        return None
-
-    class _Orig:
-        constraint_name = "some_other_constraint"
-
-    async def _boom(**fields: Any) -> User:
-        raise IntegrityError("INSERT INTO users", {}, _Orig())  # type: ignore[arg-type]
-
-    repo.get_by_username = _always_none  # type: ignore[method-assign]
-    repo.create = _boom  # type: ignore[method-assign]
-
-    service = UserService(repo)
-    with pytest.raises(IntegrityError):
-        await service.register("Other", "brand-new", "password123")

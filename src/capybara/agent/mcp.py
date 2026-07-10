@@ -13,7 +13,7 @@ import httpx
 from langchain_mcp_adapters.sessions import StreamableHttpConnection, create_session
 
 #: Bound the connect/handshake so a dead server can't hang attach/refresh/turns.
-_INIT_TIMEOUT_SECONDS = 10.0
+INIT_TIMEOUT_SECONDS = 10.0
 
 #: Exception types that mean "the server could not be reached" (vs. a protocol error).
 _UNREACHABLE = (
@@ -62,13 +62,17 @@ def _classify(exc: BaseException) -> Exception:
     return McpProtocolError(str(exc))
 
 
-def _connection(url: str, headers: dict[str, str]) -> StreamableHttpConnection:
-    """Build a streamable-HTTP MCP connection for *url*/*headers* (headers omitted if empty)."""
+def streamable_http_connection(url: str, headers: dict[str, str]) -> StreamableHttpConnection:
+    """Build a streamable-HTTP MCP connection for *url*/*headers* (headers omitted if empty).
+
+    Shared by discovery (here) and the per-turn tool loader so both use the same
+    transport settings and init timeout.
+    """
     return {
         "transport": "streamable_http",
         "url": url,
         "headers": headers or None,
-        "timeout": _INIT_TIMEOUT_SECONDS,
+        "timeout": INIT_TIMEOUT_SECONDS,
     }
 
 
@@ -83,7 +87,7 @@ async def discover(url: str, headers: dict[str, str]) -> list[DiscoveredTool]:
         McpProtocolError: If the server answered but the handshake/list failed.
     """
     try:
-        async with create_session(_connection(url, headers)) as session:
+        async with create_session(streamable_http_connection(url, headers)) as session:
             await session.initialize()
             result = await session.list_tools()
     except Exception as exc:  # noqa: BLE001 — re-raised as a classified adapter error

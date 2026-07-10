@@ -5,7 +5,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import Fact, User
-from capybara.filters import FieldEquals
 from capybara.repositories.fact_repo import FactRepo
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.passwords import hash_password
@@ -75,8 +74,8 @@ async def test_user_repo_list_orders_by_created_at_asc(session: AsyncSession) ->
     assert idx_older < idx_newer, "older created_at user must appear before newer"
 
 
-async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
-    """list(FieldEquals(...)) returns only rows matching the filter value."""
+async def test_list_criterion_scopes_correctly(session: AsyncSession) -> None:
+    """list() with a criterion returns only rows matching it."""
     user_a = await _seed_user(session)
     user_b = await _seed_user(session, username="userb")
     vec = [1.0] + [0.0] * 767
@@ -88,7 +87,7 @@ async def test_field_equals_scopes_correctly(session: AsyncSession) -> None:
         user_id=user_b.id, category="personal", content="b-fact", embedding=vec, source="manual"
     )
 
-    result = await repo.list(FieldEquals(Fact.user_id, user_a.id))
+    result = await repo.list(Fact.user_id == user_a.id)
     assert [f.content for f in result] == ["a-fact"]
 
 

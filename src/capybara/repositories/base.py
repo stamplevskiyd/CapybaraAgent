@@ -1,7 +1,7 @@
 """Generic base repository providing common CRUD operations."""
 
 from collections.abc import Sequence
-from typing import Any, ClassVar
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, select
@@ -9,14 +9,12 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.base import Base
-from capybara.filters import Filter
 
 
 class BaseRepository[ModelT: Base]:
     """Generic async repository for SQLAlchemy models."""
 
     model: type[ModelT]
-    default_filters: ClassVar[Sequence[Filter]] = ()
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialise the repository with an async session."""
@@ -30,11 +28,11 @@ class BaseRepository[ModelT: Base]:
         """Fetch a model instance by UUID primary key, returning None if not found."""
         return await self._session.get(self.model, id_)
 
-    async def list(self, *filters: Filter) -> list[ModelT]:
-        """List rows matching default + given filters, in the repo's default order."""
+    async def list(self, *criteria: ColumnElement[bool]) -> list[ModelT]:
+        """List rows matching the given WHERE criteria, in the repo's default order."""
         stmt = select(self.model)
-        for query_filter in (*self.default_filters, *filters):
-            stmt = stmt.where(query_filter.to_criterion(self.model))
+        if criteria:
+            stmt = stmt.where(*criteria)
         stmt = stmt.order_by(*self._default_order_by())
         result = await self._session.execute(stmt)
         return list(result.scalars().all())

@@ -10,7 +10,6 @@ from capybara.agent import mcp as mcp_adapter
 from capybara.agent.deep_runtime import McpServerSpec
 from capybara.agent.mcp import McpProtocolError, McpUnreachableError
 from capybara.db.models import McpServer, McpTool
-from capybara.filters import FieldEquals
 from capybara.repositories.mcp_repo import McpServerRepo, McpToolRepo
 
 
@@ -44,7 +43,7 @@ class McpService:
     async def list_servers(self, user_id: UUID) -> list[tuple[McpServer, list[McpTool]]]:
         """Return the user's servers, each paired with its tools."""
         async with self._sessionmaker() as session:
-            servers = await McpServerRepo(session).list(FieldEquals(McpServer.user_id, user_id))
+            servers = await McpServerRepo(session).list(McpServer.user_id == user_id)
             trepo = McpToolRepo(session)
             return [(s, await trepo.list_for_server(s.id)) for s in servers]
 
@@ -216,7 +215,7 @@ class McpService:
         """
         async with self._sessionmaker() as session:
             servers = await McpServerRepo(session).list(
-                FieldEquals(McpServer.user_id, user_id), FieldEquals(McpServer.enabled, True)
+                McpServer.user_id == user_id, McpServer.enabled.is_(True)
             )
             trepo = McpToolRepo(session)
             return [

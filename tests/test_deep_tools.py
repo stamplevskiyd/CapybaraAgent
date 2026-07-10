@@ -44,7 +44,7 @@ class FakeProvider:
         """Store the tools to yield."""
         self._tools = tools
 
-    async def tools_for(self, thread_id: str) -> list[object]:
+    async def tools(self) -> list[object]:
         """Return the fixed tools."""
         return self._tools
 
@@ -98,7 +98,7 @@ async def test_provider_yields_recall_tool_for_current_user() -> None:
     user_id = uuid4()
     provider = MemoryToolProvider(FakeRecallService([]), get_user_id=lambda: user_id)
 
-    tools = await provider.tools_for("thread-1")
+    tools = await provider.tools()
 
     assert [tool.name for tool in tools] == ["recall"]
 
@@ -107,14 +107,14 @@ async def test_provider_yields_nothing_without_a_user() -> None:
     """No authenticated user this turn → no per-user tools (never leak another user's memory)."""
     provider = MemoryToolProvider(FakeRecallService([]), get_user_id=lambda: None)
 
-    assert await provider.tools_for("thread-1") == []
+    assert await provider.tools() == []
 
 
 async def test_provider_yields_nothing_without_a_memory_service() -> None:
     """No memory service configured → no recall tool, even with a user."""
     provider = MemoryToolProvider(None, get_user_id=uuid4)
 
-    assert await provider.tools_for("thread-1") == []
+    assert await provider.tools() == []
 
 
 async def test_build_mcp_tools_keeps_only_enabled_prefixed_tools() -> None:
@@ -169,7 +169,7 @@ async def test_mcp_provider_looks_up_specs_for_current_user() -> None:
     service = FakeMcpSpecService([])  # empty specs → no server contact
     provider = McpToolProvider(service, get_user_id=lambda: user_id)
 
-    tools = await provider.tools_for("thread-1")
+    tools = await provider.tools()
 
     assert tools == []
     assert service.calls == [user_id]
@@ -180,7 +180,7 @@ async def test_mcp_provider_skips_service_without_a_user() -> None:
     service = FakeMcpSpecService([McpServerSpec("home", "http://h", {}, frozenset({"a"}))])
     provider = McpToolProvider(service, get_user_id=lambda: None)
 
-    assert await provider.tools_for("thread-1") == []
+    assert await provider.tools() == []
     assert service.calls == []
 
 
@@ -188,7 +188,7 @@ async def test_mcp_provider_without_a_service_yields_nothing() -> None:
     """No MCP service configured → no MCP tools."""
     provider = McpToolProvider(None, get_user_id=uuid4)
 
-    assert await provider.tools_for("thread-1") == []
+    assert await provider.tools() == []
 
 
 async def test_composite_provider_concatenates_tools_in_order() -> None:
@@ -197,6 +197,6 @@ async def test_composite_provider_concatenates_tools_in_order() -> None:
         FakeProvider([FakeTool("x")]), FakeProvider([FakeTool("y"), FakeTool("z")])
     )
 
-    tools = await composite.tools_for("thread-1")
+    tools = await composite.tools()
 
     assert [tool.name for tool in tools] == ["x", "y", "z"]

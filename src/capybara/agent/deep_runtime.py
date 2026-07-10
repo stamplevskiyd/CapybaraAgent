@@ -58,43 +58,27 @@ class McpServerSpec:
 class ToolProvider(Protocol):
     """Supplies the tools a turn's agent graph should expose."""
 
-    async def tools_for(self, thread_id: str) -> Sequence[ToolLike]:
-        """Return the tools available to the agent for *thread_id*."""
+    async def tools(self) -> Sequence[ToolLike]:
+        """Return the tools available to the agent for the current turn."""
         ...
 
 
 class DeepAgentRunner:
     """Run a DeepAgents graph and normalize its events for Chainlit.
 
-    Either a fixed *graph* is streamed on every turn, or a *graph_factory* rebuilds the
-    graph per turn from the selected model and the *tool_provider*'s tools — the latter is
-    what lets per-user memory/MCP tools reach the model, since a startup graph cannot know
-    the caller.
+    The graph is rebuilt each turn by *graph_factory* from the selected model and the
+    *tool_provider*'s tools — a graph built once at startup could not know the caller, and
+    memory/MCP tools are per-user.
     """
 
     def __init__(
         self,
-        graph: EventStreamingGraph | None = None,
-        *,
-        graph_factory: GraphFactory | None = None,
+        graph_factory: GraphFactory,
         tool_provider: ToolProvider | None = None,
     ) -> None:
-        """Store either a fixed graph or a per-turn factory (with optional tool provider)."""
-        if graph is None and graph_factory is None:
-            raise ValueError("DeepAgentRunner requires either a graph or a graph_factory")
-        self._graph = graph
+        """Store the per-turn graph factory and the optional tool provider."""
         self._graph_factory = graph_factory
         self._tool_provider = tool_provider
-
-    async def _graph_for_turn(self, model: str, thread_id: str) -> EventStreamingGraph:
-        """Return the fixed graph, or build a fresh one from this turn's tools and model."""
-        if self._graph_factory is None:
-            assert self._graph is not None  # guaranteed by __init__
-            return self._graph
-        tools: Sequence[ToolLike] = []
-        if self._tool_provider is not None:
-            tools = await self._tool_provider.tools_for(thread_id)
-        return self._graph_factory(tools, model)
 
     async def stream(
         self,
@@ -104,11 +88,11 @@ class DeepAgentRunner:
         thread_id: str,
     ) -> AsyncIterator[RunnerEvent]:
         """Stream normalized text/tool events for one user message."""
-        graph = await self._graph_for_turn(model, thread_id)
-        payload: dict[str, object] = {
-            "messages": [{"role": "user", "content": content}],
-            "model": model,
-        }
+        tools: Sequence[ToolLike] = []
+        if self._tool_provider is not None:
+            tools = await self._tool_provider.tools()
+        graph = self._graph_factory(tools, model)
+        payload: dict[str, object] = {"messages": [{"role": "user", "content": content}]}
         config = {"configurable": {"thread_id": thread_id}}
         async for event in graph.astream_events(payload, version="v2", config=config):
             normalized = self._normalize_event(event)
