@@ -6,13 +6,37 @@ from uuid import UUID
 
 import chainlit as cl
 import jwt
+from chainlit.data.base import BaseDataLayer
+from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.datastructures import Headers
 
 from capybara.agent.deep_runtime import RunnerEvent
-from capybara.config import Settings
+from capybara.config import Settings, get_settings
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
+
+#: Postgres schema holding Chainlit's data-layer tables, isolated from Capybara's own
+#: (notably Chainlit's ``users`` vs. the auth ``users`` table).
+CHAINLIT_DB_SCHEMA = "chainlit"
+
+
+def build_data_layer(settings: Settings) -> SQLAlchemyDataLayer:
+    """Build the Chainlit SQLAlchemy data layer scoped to the ``chainlit`` schema.
+
+    Chainlit persists threads/steps/elements/feedbacks (and its own users) here; scoping the
+    connection's ``search_path`` keeps those tables out of Capybara's ``public`` schema.
+    """
+    return SQLAlchemyDataLayer(
+        conninfo=settings.database_url,
+        connect_args={"server_settings": {"search_path": CHAINLIT_DB_SCHEMA}},
+    )
+
+
+@cl.data_layer
+def _data_layer() -> BaseDataLayer:
+    """Provide Chainlit's persistence backend so threads/messages survive reconnects."""
+    return build_data_layer(_settings if _settings is not None else get_settings())
 
 
 class Runner(Protocol):

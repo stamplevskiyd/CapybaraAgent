@@ -133,6 +133,39 @@ async def test_messages_has_memory_saves_column(migrated_engine: AsyncEngine) ->
     assert "memory_saves" in cols
 
 
+async def test_migrations_create_chainlit_schema(migrated_engine: AsyncEngine) -> None:
+    """Chainlit's data-layer tables land in a dedicated ``chainlit`` schema, not ``public``."""
+    async with migrated_engine.connect() as conn:
+        chainlit_tables = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT table_name FROM information_schema.tables "
+                        "WHERE table_schema = 'chainlit'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {"users", "threads", "steps", "elements", "feedbacks"} <= set(chainlit_tables)
+
+        # Chainlit's `users` must not have leaked into public alongside the auth users table.
+        public_user_schemas = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT table_schema FROM information_schema.tables "
+                        "WHERE table_name = 'users'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert set(public_user_schemas) == {"public", "chainlit"}
+
+
 async def test_migrations_create_mcp_tables(migrated_engine: AsyncEngine) -> None:
     """The MCP migration creates mcp_servers and mcp_tools at head."""
     async with migrated_engine.connect() as conn:
