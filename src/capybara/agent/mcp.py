@@ -1,8 +1,8 @@
-"""Thin adapter over pydantic-ai's MCP client (remote HTTP/SSE transport only).
+"""Thin adapter over the MCP client for tool discovery (remote streamable-HTTP only).
 
-Every pydantic-ai MCP call is localised here so the rest of the app depends on this
-small, stable interface rather than the library's evolving API. Remote transport only —
-no stdio/subprocess in this slice.
+Every MCP call is localised here so the rest of the app depends on this small, stable
+interface rather than the library's evolving API. Remote transport only — no
+stdio/subprocess in this slice.
 """
 
 from collections.abc import Iterator
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from pydantic_ai.mcp import MCPToolset, StreamableHttpTransport  # type: ignore[attr-defined]
+from langchain_mcp_adapters.sessions import StreamableHttpConnection, create_session
 
 #: Bound the connect/handshake so a dead server can't hang attach/refresh/turns.
 _INIT_TIMEOUT_SECONDS = 10.0
@@ -56,16 +56,20 @@ def _flatten(exc: BaseException) -> Iterator[BaseException]:
 
 
 def _classify(exc: BaseException) -> Exception:
-    """Map a raw pydantic-ai/MCP failure to an unreachable- or protocol-error."""
+    """Map a raw MCP failure to an unreachable- or protocol-error."""
     if any(isinstance(leaf, _UNREACHABLE) for leaf in _flatten(exc)):
         return McpUnreachableError(str(exc))
     return McpProtocolError(str(exc))
 
 
-def _raw_toolset(url: str, headers: dict[str, str], *, prefix_id: str | None = None) -> MCPToolset:
-    """Build an unfiltered MCPToolset for *url*/*headers* (headers omitted when empty)."""
-    transport = StreamableHttpTransport(url=url, headers=headers or None)
-    return MCPToolset(transport, id=prefix_id, init_timeout=_INIT_TIMEOUT_SECONDS)
+def _connection(url: str, headers: dict[str, str]) -> StreamableHttpConnection:
+    """Build a streamable-HTTP MCP connection for *url*/*headers* (headers omitted if empty)."""
+    return {
+        "transport": "streamable_http",
+        "url": url,
+        "headers": headers or None,
+        "timeout": _INIT_TIMEOUT_SECONDS,
+    }
 
 
 async def discover(url: str, headers: dict[str, str]) -> list[DiscoveredTool]:
@@ -78,17 +82,17 @@ async def discover(url: str, headers: dict[str, str]) -> list[DiscoveredTool]:
         McpUnreachableError: If the server cannot be reached.
         McpProtocolError: If the server answered but the handshake/list failed.
     """
-    toolset = _raw_toolset(url, headers)
     try:
-        async with toolset:
-            raw = await toolset.list_tools()
+        async with create_session(_connection(url, headers)) as session:
+            await session.initialize()
+            result = await session.list_tools()
     except Exception as exc:  # noqa: BLE001 — re-raised as a classified adapter error
         raise _classify(exc) from exc
     return [
         DiscoveredTool(
             name=tool.name,
-            description=getattr(tool, "description", None),
-            input_schema=getattr(tool, "inputSchema", None),
+            description=tool.description,
+            input_schema=tool.inputSchema,
         )
-        for tool in raw
+        for tool in result.tools
     ]
