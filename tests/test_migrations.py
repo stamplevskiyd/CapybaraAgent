@@ -1,8 +1,8 @@
-from sqlalchemy import inspect, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 
-async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -> None:
+async def test_migrations_create_public_schema(migrated_engine: AsyncEngine) -> None:
     async with migrated_engine.connect() as conn:
         tables = (
             (
@@ -16,56 +16,21 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
             .scalars()
             .all()
         )
-        assert {"users", "chats", "messages"} <= set(tables)
+        assert {"users", "facts", "mcp_servers", "mcp_tools", "chat_prefs"} <= set(tables)
 
-        count = (
-            await conn.execute(text("SELECT count(*) FROM users WHERE username = 'roman'"))
-        ).scalar_one()
-        assert count == 0
-
-        cols = (
+        user_cols = (
             (
                 await conn.execute(
                     text(
                         "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_name = 'users'"
+                        "WHERE table_name = 'users' AND table_schema = 'public'"
                     )
                 )
             )
             .scalars()
             .all()
         )
-        assert "password_hash" in set(cols)
-
-        # Verify the seq identity column was added by the migration.
-        seq_col = (
-            await conn.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_schema = 'public' AND table_name = 'messages' "
-                    "AND column_name = 'seq'"
-                )
-            )
-        ).scalar_one_or_none()
-        assert seq_col == "seq", "messages.seq column missing — migration did not apply"
-
-        indexes = (
-            (
-                await conn.execute(
-                    text(
-                        "SELECT indexname FROM pg_indexes "
-                        "WHERE schemaname = 'public' "
-                        "AND tablename IN ('chats', 'messages')"
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        assert "ix_chats_user_id_updated_at" in indexes
-        assert "ix_messages_chat_id_seq" in indexes
-
-        assert "facts" in set(tables)
+        assert "password_hash" in set(user_cols)
 
         fact_cols = (
             (
@@ -80,20 +45,6 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
             .all()
         )
         assert {"embedding", "category", "source", "user_id"} <= set(fact_cols)
-
-        user_cols = (
-            (
-                await conn.execute(
-                    text(
-                        "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_name = 'users'"
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        assert "memory_auto_capture" in set(user_cols)
 
         fact_indexes = (
             (
@@ -111,26 +62,40 @@ async def test_migrations_create_schema_and_seed(migrated_engine: AsyncEngine) -
         assert "ix_facts_user_id_created_at" in fact_indexes
 
 
-async def test_messages_has_tool_calls_column(migrated_engine: AsyncEngine) -> None:
-    """The tool_calls JSONB column exists after migrations run."""
-
-    def _columns(sync_conn):  # type: ignore[no-untyped-def]
-        return {c["name"] for c in inspect(sync_conn).get_columns("messages")}
-
+async def test_migrations_create_mcp_tables(migrated_engine: AsyncEngine) -> None:
+    """The initial schema creates mcp_servers and mcp_tools with their curation fields."""
     async with migrated_engine.connect() as conn:
-        cols = await conn.run_sync(_columns)
-    assert "tool_calls" in cols
+        cols = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'mcp_servers'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {"headers", "enabled", "last_connected_at", "last_error"} <= set(cols)
 
 
-async def test_messages_has_memory_saves_column(migrated_engine: AsyncEngine) -> None:
-    """The memory_saves JSONB column exists after migrations run."""
-
-    def _columns(sync_conn):  # type: ignore[no-untyped-def]
-        return {c["name"] for c in inspect(sync_conn).get_columns("messages")}
-
+async def test_migrations_create_chat_prefs(migrated_engine: AsyncEngine) -> None:
+    """chat_prefs holds per-user thread metadata (favorite, model) keyed by thread_id."""
     async with migrated_engine.connect() as conn:
-        cols = await conn.run_sync(_columns)
-    assert "memory_saves" in cols
+        cols = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'chat_prefs'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert {"user_id", "thread_id", "is_favorite", "model"} <= set(cols)
 
 
 async def test_migrations_create_chainlit_schema(migrated_engine: AsyncEngine) -> None:
@@ -164,35 +129,3 @@ async def test_migrations_create_chainlit_schema(migrated_engine: AsyncEngine) -
             .all()
         )
         assert set(public_user_schemas) == {"public", "chainlit"}
-
-
-async def test_migrations_create_mcp_tables(migrated_engine: AsyncEngine) -> None:
-    """The MCP migration creates mcp_servers and mcp_tools at head."""
-    async with migrated_engine.connect() as conn:
-        tables = (
-            (
-                await conn.execute(
-                    text(
-                        "SELECT table_name FROM information_schema.tables "
-                        "WHERE table_schema = 'public'"
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        assert {"mcp_servers", "mcp_tools"} <= set(tables)
-
-        cols = (
-            (
-                await conn.execute(
-                    text(
-                        "SELECT column_name FROM information_schema.columns "
-                        "WHERE table_name = 'mcp_servers'"
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        assert {"headers", "enabled", "last_connected_at", "last_error"} <= set(cols)
