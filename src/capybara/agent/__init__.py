@@ -4,7 +4,6 @@ from capybara.agent.base import (
     BaseAgent,
     ModelProviderError,
     ModelUnavailableError,
-    ReplyAccumulator,
 )
 from capybara.agent.ollama import OllamaAgent
 
@@ -13,5 +12,4 @@ __all__ = [
     "ModelProviderError",
     "ModelUnavailableError",
     "OllamaAgent",
-    "ReplyAccumulator",
 ]

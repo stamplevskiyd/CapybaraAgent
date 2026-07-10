@@ -11,8 +11,6 @@ from typing import Any
 
 import httpx
 from pydantic_ai.mcp import MCPToolset, StreamableHttpTransport  # type: ignore[attr-defined]
-from pydantic_ai.tools import ToolDefinition
-from pydantic_ai.toolsets import AbstractToolset
 
 #: Bound the connect/handshake so a dead server can't hang attach/refresh/turns.
 _INIT_TIMEOUT_SECONDS = 10.0
@@ -94,22 +92,3 @@ async def discover(url: str, headers: dict[str, str]) -> list[DiscoveredTool]:
         )
         for tool in raw
     ]
-
-
-def build_toolset(
-    url: str, headers: dict[str, str], enabled_tools: set[str], prefix: str
-) -> AbstractToolset[None]:
-    """Return an agent-ready toolset exposing only *enabled_tools*, namespaced by *prefix*.
-
-    The filter matches on the server's original tool names (applied before prefixing);
-    pydantic-ai then exposes each kept tool to the model as ``{prefix}_{tool}`` so names
-    never collide across servers or with built-in tools. The MCP session is opened lazily
-    by pydantic-ai for the duration of the agent run, not here.
-    """
-    enabled = set(enabled_tools)
-
-    def _keep(_ctx: object, tool_def: ToolDefinition) -> bool:
-        return tool_def.name in enabled
-
-    toolset = _raw_toolset(url, headers, prefix_id=prefix)
-    return toolset.filtered(_keep).prefixed(prefix)

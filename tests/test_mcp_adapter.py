@@ -8,7 +8,6 @@ from capybara.agent.mcp import (
     DiscoveredTool,
     McpProtocolError,
     McpUnreachableError,
-    build_toolset,
     discover,
 )
 
@@ -114,20 +113,3 @@ async def test_discover_flattens_exception_group(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(McpUnreachableError):
         await discover("http://ha/mcp", {})
-
-
-def test_build_toolset_filters_and_prefixes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """build_toolset filters to enabled tool names (pre-prefix) and applies the prefix."""
-    monkeypatch.setattr(mcp_adapter, "MCPToolset", _FakeToolset)
-    monkeypatch.setattr(mcp_adapter, "StreamableHttpTransport", lambda **kw: kw)
-
-    ts = build_toolset("http://ha/mcp", {}, enabled_tools={"turn_on"}, prefix="home")
-
-    # The filter keeps only enabled original names.
-    class _Def:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-    assert ts.filtered_with(None, _Def("turn_on")) is True
-    assert ts.filtered_with(None, _Def("turn_off")) is False
-    assert ts.prefixed_with == "home"

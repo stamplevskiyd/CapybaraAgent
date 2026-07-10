@@ -1,23 +1,14 @@
 """Router for chat and message endpoints."""
 
-import logging
-from collections.abc import AsyncIterable, AsyncIterator
 from typing import Annotated, NoReturn
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
-from pydantic_ai.messages import ModelMessage
-from starlette.background import BackgroundTask
-from starlette.types import Receive, Scope, Send
 
 from capybara.agent.base import BaseAgent, ModelProviderError, ModelUnavailableError
 from capybara.api.dependencies import (
     get_agent,
     get_chat_repo,
-    get_chat_service,
     get_current_user,
-    get_memory_service,
     get_message_repo,
     get_owned_chat,
 )
@@ -26,24 +17,12 @@ from capybara.api.schemas import (
     ChatDetailOut,
     ChatOut,
     ChatUpdate,
-    MessageCreate,
     MessageOut,
 )
-from capybara.api.sse import SSE_HEADERS, format_sse
 from capybara.db.models import Chat, Message, User
 from capybara.filters import FieldEquals
 from capybara.repositories.chat_repo import ChatRepo
 from capybara.repositories.message_repo import MessageRepo
-from capybara.services.chat_service import (
-    ChatNotFoundError,
-    ChatService,
-    NoUserMessageError,
-    TurnLockLease,
-)
-from capybara.services.events import Delta, Done, ToolCall, ToolResult
-from capybara.services.memory_service import MemoryService, schedule_extraction
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 
@@ -128,163 +107,3 @@ def _raise_for_model_error(exc: ModelUnavailableError | ModelProviderError) -> N
     if isinstance(exc, ModelProviderError):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-
-
-def _raise_for_turn_error(exc: BaseException) -> NoReturn:
-    """Map a turn-preparation failure to its HTTP error; re-raise anything unexpected."""
-    if isinstance(exc, ChatNotFoundError):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Chat not found"
-        ) from None
-    if isinstance(exc, NoUserMessageError):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="No user message to regenerate"
-        ) from None
-    if isinstance(exc, ModelUnavailableError | ModelProviderError):
-        _raise_for_model_error(exc)
-    raise exc
-
-
-class TurnStreamingResponse(StreamingResponse):
-    """SSE response that guarantees the turn-lock lease is released.
-
-    Streams that started release the lease in the generator's ``finally``; this
-    response-level ``finally`` covers the one path the generator cannot see — a client
-    that disconnects before the body iterator is first pulled (on ASGI >= 2.4 the
-    header send raises and neither the generator body nor the background task runs).
-    Without it the lease would leak and every later send to the chat would deadlock.
-    """
-
-    def __init__(
-        self,
-        content: AsyncIterable[str],
-        lease: TurnLockLease,
-        background: BackgroundTask | None = None,
-    ) -> None:
-        """Wrap *content* as an SSE stream that owns *lease* until the response ends."""
-        super().__init__(
-            content, media_type="text/event-stream", headers=SSE_HEADERS, background=background
-        )
-        self._lease = lease
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """Serve the response, releasing the lease on every exit path."""
-        try:
-            await super().__call__(scope, receive, send)
-        finally:
-            self._lease.release()
-
-
-async def _turn_event_stream(
-    service: ChatService,
-    lease: TurnLockLease,
-    chat_id: UUID,
-    model: str,
-    content: str,
-    history: list[ModelMessage],
-    user_id: UUID,
-    *,
-    title_source: str | None = None,
-) -> AsyncIterator[str]:
-    """Yield SSE frames for one streamed turn, releasing the turn lease at the end.
-
-    When *title_source* is given (first turn of a chat) a title frame is emitted after
-    the reply, still under the lease. Stream failures surface as a generic SSE error
-    frame, never a broken stream.
-    """
-    try:
-        async for event in service.stream_turn(chat_id, model, content, history, user_id=user_id):
-            if isinstance(event, Delta):
-                yield format_sse("delta", {"text": event.text})
-            elif isinstance(event, ToolCall):
-                yield format_sse(
-                    "tool-call", {"id": event.id, "name": event.name, "args": event.args}
-                )
-            elif isinstance(event, ToolResult):
-                yield format_sse("tool-result", {"id": event.id, "result": event.result})
-            elif isinstance(event, Done):
-                yield format_sse("done", {"message_id": event.message_id, "usage": event.usage})
-        if title_source is not None:
-            title = await service.generate_title(chat_id, title_source)
-            if title:
-                yield format_sse("title", {"title": title})
-    except Exception:  # surface a generic SSE error, never a broken stream
-        logger.exception("chat stream failed for chat %s", chat_id)
-        yield format_sse("error", {"message": "Internal server error while streaming the reply"})
-    finally:
-        lease.release()
-
-
-@router.post("/{chat_id}/messages")
-async def send_message(
-    chat_id: UUID,
-    payload: MessageCreate,
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[ChatService, Depends(get_chat_service)],
-    memory: Annotated[MemoryService, Depends(get_memory_service)],
-) -> StreamingResponse:
-    """Accept a user message, stream the LLM reply via SSE, and persist both messages.
-
-    Ownership is checked and the user message is saved up front on a short-lived
-    session; the LLM stream then runs holding no DB connection.  This endpoint does
-    not take a request-scoped session — ChatService owns its own session lifecycle.
-
-    The per-chat turn lock is held from before the user message is written until the
-    stream finishes persisting the reply, so concurrent sends/regenerations on the same
-    chat never interleave. The lease is released here if preparing the turn fails, in
-    the stream's ``finally`` once it runs, and by the response itself as a last resort.
-    """
-    lease = await service.acquire_turn_lock(chat_id)
-    try:
-        model, history = await service.begin_turn(user.id, chat_id, payload.content)
-    except BaseException as exc:
-        lease.release()
-        _raise_for_turn_error(exc)
-    return TurnStreamingResponse(
-        _turn_event_stream(
-            service,
-            lease,
-            chat_id,
-            model,
-            payload.content,
-            history,
-            user.id,
-            # First turn → derive a title without delaying the answer.
-            title_source=payload.content if not history else None,
-        ),
-        lease=lease,
-        background=BackgroundTask(schedule_extraction, memory, user.id, chat_id),
-    )
-
-
-@router.post("/{chat_id}/messages/regenerate")
-async def regenerate_message(
-    chat_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[ChatService, Depends(get_chat_service)],
-) -> StreamingResponse:
-    """Delete the trailing assistant reply and stream a fresh one via SSE.
-
-    No new user message is written — this endpoint regenerates the assistant
-    reply for the last existing user message.  Ownership is verified and the
-    old assistant row(s) are removed before any SSE bytes are sent.
-
-    Holds the per-chat turn lock across delete → stream → persist so it cannot race a
-    concurrent send or regenerate on the same chat. The lease is released here if
-    preparation fails, in the stream's ``finally`` once it runs, and by the response
-    itself as a last resort.
-    """
-    lease = await service.acquire_turn_lock(chat_id)
-    try:
-        model, last_user_content, history = await service.regenerate_turn(user.id, chat_id)
-    except BaseException as exc:
-        lease.release()
-        _raise_for_turn_error(exc)
-    # Deliberately no auto-capture background task (unlike send_message): a regenerate
-    # re-answers a user message whose original send already ran extraction, so running
-    # it again would only re-process the same turn. Pinned by
-    # test_regenerate_does_not_auto_capture.
-    return TurnStreamingResponse(
-        _turn_event_stream(service, lease, chat_id, model, last_user_content, history, user.id),
-        lease=lease,
-    )

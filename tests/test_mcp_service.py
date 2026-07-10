@@ -67,61 +67,6 @@ async def test_attach_unreachable_persists_nothing(
     assert await service.list_servers(user.id) == []
 
 
-async def test_set_tool_enabled_and_build_toolsets(
-    session: AsyncSession,
-    make_user,
-    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
-) -> None:
-    """Disabling a tool drops it; build_toolsets includes only reachable enabled servers."""
-    user = await make_user(session)
-
-    async def fake_discover(url, headers):  # type: ignore[no-untyped-def]
-        return [DiscoveredTool("turn_on", "d", {}), DiscoveredTool("turn_off", None, None)]
-
-    built: list = []
-
-    def fake_build(url, headers, enabled_tools, prefix):  # type: ignore[no-untyped-def]
-        built.append((prefix, set(enabled_tools)))
-        return object()
-
-    monkeypatch.setattr(mcp_adapter, "discover", fake_discover)
-    monkeypatch.setattr(mcp_adapter, "build_toolset", fake_build)
-    service = McpService(_maker(session))
-
-    server, tools = await service.attach(user.id, "home", "http://ha/mcp", {})
-    off = next(t for t in tools if t.name == "turn_off")
-    await service.set_tool_enabled(user.id, server.id, off.id, enabled=False)
-
-    toolsets = await service.build_toolsets(user.id)
-
-    assert len(toolsets) == 1
-    assert built == [("home", {"turn_on"})]  # only the enabled tool
-
-
-async def test_build_toolsets_skips_unreachable(
-    session: AsyncSession,
-    make_user,
-    monkeypatch: pytest.MonkeyPatch,  # type: ignore[no-untyped-def]
-) -> None:
-    """A server unreachable at turn time is skipped (fail-open), not raised."""
-    user = await make_user(session)
-
-    async def fake_discover_ok(url, headers):  # type: ignore[no-untyped-def]
-        return [DiscoveredTool("turn_on", "d", {})]
-
-    monkeypatch.setattr(mcp_adapter, "discover", fake_discover_ok)
-    service = McpService(_maker(session))
-    await service.attach(user.id, "home", "http://ha/mcp", {})
-
-    async def now_unreachable(url, headers):  # type: ignore[no-untyped-def]
-        raise McpUnreachableError("gone")
-
-    monkeypatch.setattr(mcp_adapter, "discover", now_unreachable)
-
-    toolsets = await service.build_toolsets(user.id)
-    assert toolsets == []  # skipped, no exception
-
-
 async def test_enabled_tool_specs_returns_langchain_ready_specs(
     session: AsyncSession,
     make_user,

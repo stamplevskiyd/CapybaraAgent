@@ -1,11 +1,9 @@
-"""MCP service: attach/refresh/CRUD/curation of servers, and per-turn toolset assembly."""
+"""MCP service: attach/refresh/CRUD/curation of servers, and per-turn tool-spec assembly."""
 
-import logging
 import re
 from datetime import UTC, datetime
 from uuid import UUID
 
-from pydantic_ai.toolsets import AbstractToolset
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from capybara.agent import mcp as mcp_adapter
@@ -15,8 +13,6 @@ from capybara.db.models import McpServer, McpTool
 from capybara.filters import FieldEquals
 from capybara.repositories.mcp_repo import McpServerRepo, McpToolRepo
 
-logger = logging.getLogger(__name__)
-
 
 def _slug(name: str) -> str:
     """Derive a tool-name prefix from a server name (lowercase alnum, ``_``-joined)."""
@@ -25,7 +21,7 @@ def _slug(name: str) -> str:
 
 
 class McpService:
-    """Orchestrate MCP servers: discovery, persistence, curation, and toolset assembly.
+    """Orchestrate MCP servers: discovery, persistence, curation, and tool-spec assembly.
 
     Owns short-lived sessions from the app-wide sessionmaker (never borrows a request
     session), so it is safe to use from both routes and a chat turn.
@@ -214,10 +210,9 @@ class McpService:
     async def enabled_tool_specs(self, user_id: UUID) -> list[McpServerSpec]:
         """Return LangChain-ready specs for the user's enabled servers (enabled tools only).
 
-        Unlike ``build_toolsets`` (pydantic-ai), no reachability preflight happens here: the
-        DeepAgents loader connects when it builds the tools, so that connect doubles as the
-        preflight and a dead server is dropped there. Kept alongside ``build_toolsets`` until
-        the pydantic-ai path is removed.
+        No reachability preflight happens here: the DeepAgents loader connects when it
+        builds the tools, so that connect doubles as the preflight and a dead server is
+        dropped there.
         """
         async with self._sessionmaker() as session:
             servers = await McpServerRepo(session).list(
@@ -235,47 +230,3 @@ class McpService:
                 )
                 for s in servers
             ]
-
-    async def build_toolsets(self, user_id: UUID) -> list[AbstractToolset[None]]:
-        """Build agent-ready toolsets for the user's enabled servers (enabled tools only).
-
-        Fail-open (preflight boundary): each enabled server is reachability-checked via
-        ``discover`` at the *start* of the turn (preflight). A server that fails this
-        preflight is logged and skipped so a dead server never breaks the reply.
-
-        This guarantee covers only the preflight check. A server that *passes* the preflight
-        but becomes unreachable between the preflight ``discover`` and the pydantic-ai agent
-        run — or that errors during an actual tool call inside the agent — is **not** masked
-        in this slice: the error will propagate through ``stream_reply`` and break the reply.
-        Airtight run-time degradation (e.g. per-call retry, persistent connection pool) is
-        deferred to the future connection-pool slice.
-
-        NOTE (known slice-A inefficiency): this reachability check opens a session, and
-        pydantic-ai opens another when the agent actually runs the toolset — two
-        handshakes per server per turn. A persistent connection pool is a later slice.
-        """
-        async with self._sessionmaker() as session:
-            servers = await McpServerRepo(session).list(
-                FieldEquals(McpServer.user_id, user_id), FieldEquals(McpServer.enabled, True)
-            )
-            trepo = McpToolRepo(session)
-            specs = [
-                (
-                    s.name,
-                    s.url,
-                    dict(s.headers),
-                    {t.name for t in await trepo.list_for_server(s.id) if t.enabled},
-                )
-                for s in servers
-            ]
-        toolsets: list[AbstractToolset[None]] = []
-        for name, url, headers, enabled_names in specs:
-            if not enabled_names:
-                continue
-            try:
-                await mcp_adapter.discover(url, headers)
-            except (McpUnreachableError, McpProtocolError):
-                logger.warning("MCP server %r unreachable this turn; skipping its tools", name)
-                continue
-            toolsets.append(mcp_adapter.build_toolset(url, headers, enabled_names, _slug(name)))
-        return toolsets

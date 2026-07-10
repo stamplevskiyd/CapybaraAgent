@@ -40,7 +40,7 @@ class Message(Base, TimestampMixin):
     usage_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     #: Display-only record of tool invocations in this assistant turn: a list of
     #: ``{"id", "name", "args", "result"}``. ``NULL`` when the turn used no tools.
-    #: Not replayed into model context — see ``to_model_messages``.
+    #: Display-only; not replayed into model context on later turns.
     tool_calls: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     #: Display-only record of facts auto-captured from this assistant turn: a list of
     #: ``{"content", "category"}``. ``NULL`` when nothing was stored. Written by the
