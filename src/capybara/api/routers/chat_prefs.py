@@ -34,6 +34,7 @@ async def upsert_chat_pref(
         thread_id=thread_id,
         is_favorite=body.is_favorite,
         model=body.model,
+        mode=body.mode,
     ).execute()
     return ChatPrefOut.model_validate(pref)
 

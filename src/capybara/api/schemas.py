@@ -80,6 +80,7 @@ class TokenResponse(BaseModel):
 
 
 FactCategory = Literal["personal", "project", "preference"]
+AgentMode = Literal["fast", "smart"]
 
 
 class FactCreate(BaseModel):
@@ -185,10 +186,12 @@ class ChatPrefOut(BaseModel):
     thread_id: UUID
     is_favorite: bool
     model: str | None
+    mode: AgentMode
 
 
 class ChatPrefUpsert(BaseModel):
-    """Request schema to set a thread's favorite flag and selected model."""
+    """Request schema to set a thread's favorite flag, selected model, and agent mode."""
 
     is_favorite: bool = False
     model: str | None = Field(default=None, max_length=200)
+    mode: AgentMode = "fast"

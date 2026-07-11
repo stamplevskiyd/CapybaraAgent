@@ -39,13 +39,13 @@ async def test_upsert_creates_then_updates_a_pref(
     thread_id = uuid4()
 
     created = await UpsertChatPref(
-        maker, user_id=user.id, thread_id=thread_id, is_favorite=True, model="llama3.1"
+        maker, user_id=user.id, thread_id=thread_id, is_favorite=True, model="llama3.1", mode="fast"
     ).execute()
     assert created.is_favorite is True
     assert created.model == "llama3.1"
 
     updated = await UpsertChatPref(
-        maker, user_id=user.id, thread_id=thread_id, is_favorite=False, model=None
+        maker, user_id=user.id, thread_id=thread_id, is_favorite=False, model=None, mode="fast"
     ).execute()
     assert updated.id == created.id  # same row, patched
     assert updated.is_favorite is False
@@ -66,13 +66,34 @@ async def test_prefs_are_scoped_to_the_owner(
     maker = _maker(session)
     thread_id = uuid4()
     await UpsertChatPref(
-        maker, user_id=owner.id, thread_id=thread_id, is_favorite=True, model=None
+        maker, user_id=owner.id, thread_id=thread_id, is_favorite=True, model=None, mode="fast"
     ).execute()
 
     assert await ListChatPrefs(maker, user_id=other.id).execute() == []
     assert await GetChatPref(maker, user_id=other.id, thread_id=thread_id).execute() is None
     got = await GetChatPref(maker, user_id=owner.id, thread_id=thread_id).execute()
     assert got is not None and got.is_favorite is True
+
+
+async def test_upsert_persists_mode(
+    session: AsyncSession,
+    make_user,  # type: ignore[no-untyped-def]
+) -> None:
+    """UpsertChatPref writes the agent mode and updates it in place."""
+    user = await make_user(session)
+    await session.commit()
+    maker = _maker(session)
+    thread_id = uuid4()
+
+    created = await UpsertChatPref(
+        maker, user_id=user.id, thread_id=thread_id, is_favorite=False, model=None, mode="smart"
+    ).execute()
+    assert created.mode == "smart"
+
+    updated = await UpsertChatPref(
+        maker, user_id=user.id, thread_id=thread_id, is_favorite=False, model=None, mode="fast"
+    ).execute()
+    assert updated.id == created.id and updated.mode == "fast"
 
 
 async def test_delete_removes_a_pref(
@@ -85,7 +106,7 @@ async def test_delete_removes_a_pref(
     maker = _maker(session)
     thread_id = uuid4()
     await UpsertChatPref(
-        maker, user_id=user.id, thread_id=thread_id, is_favorite=True, model=None
+        maker, user_id=user.id, thread_id=thread_id, is_favorite=True, model=None, mode="fast"
     ).execute()
 
     assert await DeleteChatPref(maker, user_id=user.id, thread_id=thread_id).execute() is True

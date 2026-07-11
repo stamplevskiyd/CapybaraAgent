@@ -98,6 +98,37 @@ async def test_migrations_create_chat_prefs(migrated_engine: AsyncEngine) -> Non
         assert {"user_id", "thread_id", "is_favorite", "model"} <= set(cols)
 
 
+async def test_chat_prefs_has_mode_column(migrated_engine: AsyncEngine) -> None:
+    """chat_prefs.mode exists after migrations, constrained to fast/smart."""
+    async with migrated_engine.connect() as conn:
+        cols = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_name = 'chat_prefs'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "mode" in set(cols)
+        checks = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT constraint_name FROM information_schema.check_constraints "
+                        "WHERE constraint_name = 'ck_chat_prefs_mode'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert "ck_chat_prefs_mode" in set(checks)
+
+
 async def test_chainlit_steps_covers_every_stepdict_key(migrated_engine: AsyncEngine) -> None:
     """chainlit.steps must have a column for every StepDict key the data layer writes.
 

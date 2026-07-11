@@ -1,4 +1,4 @@
-"""Set a thread's chat preferences (favorite flag, selected model)."""
+"""Set a thread's chat preferences (favorite flag, selected model, agent mode)."""
 
 from uuid import UUID
 
@@ -21,6 +21,7 @@ class UpsertChatPref(BaseCommand[ChatPref]):
         thread_id: UUID,
         is_favorite: bool,
         model: str | None,
+        mode: str,
     ) -> None:
         """Store the sessionmaker, the (user, thread) key, and the new field values."""
         self._sessionmaker = sessionmaker
@@ -28,6 +29,7 @@ class UpsertChatPref(BaseCommand[ChatPref]):
         self._thread_id = thread_id
         self._is_favorite = is_favorite
         self._model = model
+        self._mode = mode
 
     async def run(self) -> ChatPref:
         """Create or replace the pref within one session (PUT semantics)."""
@@ -43,8 +45,11 @@ class UpsertChatPref(BaseCommand[ChatPref]):
                     thread_id=self._thread_id,
                     is_favorite=self._is_favorite,
                     model=self._model,
+                    mode=self._mode,
                 )
             else:
-                pref = await repo.update(pref, is_favorite=self._is_favorite, model=self._model)
+                pref = await repo.update(
+                    pref, is_favorite=self._is_favorite, model=self._model, mode=self._mode
+                )
             await session.commit()
             return pref
