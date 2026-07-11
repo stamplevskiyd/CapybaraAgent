@@ -98,6 +98,34 @@ async def test_migrations_create_chat_prefs(migrated_engine: AsyncEngine) -> Non
         assert {"user_id", "thread_id", "is_favorite", "model"} <= set(cols)
 
 
+async def test_chainlit_steps_covers_every_stepdict_key(migrated_engine: AsyncEngine) -> None:
+    """chainlit.steps must have a column for every StepDict key the data layer writes.
+
+    SQLAlchemyDataLayer.create_step builds its INSERT from whatever non-None keys the
+    step dict carries, so a missing column is a runtime 500 on the first message that
+    uses it (autoCollapse bit us live). Pinning against the installed Chainlit's
+    StepDict catches this on every dependency upgrade.
+    """
+    from chainlit.step import StepDict
+
+    # ``feedback`` rides in its own table, never as a steps column.
+    expected = set(StepDict.__annotations__) - {"feedback"}
+    async with migrated_engine.connect() as conn:
+        cols = (
+            (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'chainlit' AND table_name = 'steps'"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert expected <= set(cols), f"missing: {expected - set(cols)}"
+
+
 async def test_migrations_create_chainlit_schema(migrated_engine: AsyncEngine) -> None:
     """Chainlit's data-layer tables land in a dedicated ``chainlit`` schema, not ``public``."""
     async with migrated_engine.connect() as conn:

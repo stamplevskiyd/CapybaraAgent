@@ -198,6 +198,8 @@ def _create_chainlit_schema() -> None:
             "language" TEXT,
             "indent" INT,
             "defaultOpen" BOOLEAN,
+            "autoCollapse" BOOLEAN,
+            "icon" TEXT,
             "modes" JSONB,
             FOREIGN KEY ("threadId") REFERENCES chainlit.threads("id") ON DELETE CASCADE
         )
@@ -220,6 +222,8 @@ def _create_chainlit_schema() -> None:
             "forId" UUID,
             "mime" TEXT,
             "props" JSONB,
+            "autoPlay" BOOLEAN,
+            "playerConfig" JSONB,
             FOREIGN KEY ("threadId") REFERENCES chainlit.threads("id") ON DELETE CASCADE
         )
         """
