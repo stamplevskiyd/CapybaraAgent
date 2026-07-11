@@ -41,7 +41,6 @@ class ChatPrefService:
             else:
                 pref = await repo.update(pref, is_favorite=is_favorite, model=model)
             await session.commit()
-            await session.refresh(pref)
             return pref
 
     async def delete(self, user_id: UUID, thread_id: UUID) -> bool:

@@ -14,25 +14,10 @@ from capybara.api.schemas import (
     McpToolOut,
     McpToolUpdate,
 )
-from capybara.db.models import McpServer, McpTool, User
+from capybara.db.models import User
 from capybara.services.mcp_service import McpService
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
-
-
-def _server_out(server: McpServer, tools: list[McpTool]) -> McpServerOut:
-    """Assemble a server + its tools into the response schema."""
-    return McpServerOut(
-        id=server.id,
-        name=server.name,
-        url=server.url,
-        enabled=server.enabled,
-        last_connected_at=server.last_connected_at,
-        last_error=server.last_error,
-        created_at=server.created_at,
-        updated_at=server.updated_at,
-        tools=[McpToolOut.model_validate(t) for t in tools],
-    )
 
 
 def _raise_for_mcp_error(exc: McpUnreachableError | McpProtocolError) -> NoReturn:
@@ -51,7 +36,7 @@ async def list_servers(
     service: Annotated[McpService, Depends(get_mcp_service)],
 ) -> list[McpServerOut]:
     """Return the current user's MCP servers with their tools."""
-    return [_server_out(s, tools) for s, tools in await service.list_servers(user.id)]
+    return [McpServerOut.model_validate(s) for s in await service.list_servers(user.id)]
 
 
 @router.post("/servers", status_code=status.HTTP_201_CREATED, response_model=McpServerOut)
@@ -62,10 +47,10 @@ async def attach_server(
 ) -> McpServerOut:
     """Attach an MCP server: validate the connection and persist it with its tools."""
     try:
-        server, tools = await service.attach(user.id, payload.name, payload.url, payload.headers)
+        server = await service.attach(user.id, payload.name, payload.url, payload.headers)
     except (McpUnreachableError, McpProtocolError) as exc:
         _raise_for_mcp_error(exc)
-    return _server_out(server, tools)
+    return McpServerOut.model_validate(server)
 
 
 @router.get("/servers/{server_id}", response_model=McpServerOut)
@@ -75,10 +60,10 @@ async def get_server(
     service: Annotated[McpService, Depends(get_mcp_service)],
 ) -> McpServerOut:
     """Return a single MCP server with its tools (404 if not owned)."""
-    loaded = await service.get_server(user.id, server_id)
-    if loaded is None:
+    server = await service.get_server(user.id, server_id)
+    if server is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MCP server not found")
-    return _server_out(*loaded)
+    return McpServerOut.model_validate(server)
 
 
 @router.patch("/servers/{server_id}", response_model=McpServerOut)
@@ -89,7 +74,7 @@ async def update_server(
     service: Annotated[McpService, Depends(get_mcp_service)],
 ) -> McpServerOut:
     """Update a server's name/url/headers/enabled (404 if not owned)."""
-    loaded = await service.update_server(
+    server = await service.update_server(
         user.id,
         server_id,
         name=payload.name,
@@ -97,9 +82,9 @@ async def update_server(
         headers=payload.headers,
         enabled=payload.enabled,
     )
-    if loaded is None:
+    if server is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MCP server not found")
-    return _server_out(*loaded)
+    return McpServerOut.model_validate(server)
 
 
 @router.delete("/servers/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -121,12 +106,12 @@ async def refresh_server(
 ) -> McpServerOut:
     """Re-discover a server's tools, preserving enabled flags (404 if not owned)."""
     try:
-        loaded = await service.refresh(user.id, server_id)
+        server = await service.refresh(user.id, server_id)
     except (McpUnreachableError, McpProtocolError) as exc:
         _raise_for_mcp_error(exc)
-    if loaded is None:
+    if server is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MCP server not found")
-    return _server_out(*loaded)
+    return McpServerOut.model_validate(server)
 
 
 @router.patch("/servers/{server_id}/tools/{tool_id}", response_model=McpToolOut)

@@ -23,40 +23,36 @@ class McpService:
     """Orchestrate MCP servers: discovery, persistence, curation, and tool-spec assembly.
 
     Owns short-lived sessions from the app-wide sessionmaker (never borrows a request
-    session), so it is safe to use from both routes and a chat turn.
+    session), so it is safe to use from both routes and a chat turn. Servers carry their
+    tools via the eager ``McpServer.tools`` relationship.
     """
 
     def __init__(self, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
         """Store the app-wide sessionmaker."""
         self._sessionmaker = sessionmaker
 
-    async def _load(
+    async def _owned(
         self, session: AsyncSession, user_id: UUID, server_id: UUID
-    ) -> tuple[McpServer, list[McpTool]] | None:
-        """Return a user-owned server and its tools, or None if not found/owned."""
+    ) -> McpServer | None:
+        """Return the server if it exists and belongs to *user_id*, else None."""
         server = await McpServerRepo(session).get(server_id)
         if server is None or server.user_id != user_id:
             return None
-        tools = await McpToolRepo(session).list_for_server(server_id)
-        return server, tools
+        return server
 
-    async def list_servers(self, user_id: UUID) -> list[tuple[McpServer, list[McpTool]]]:
-        """Return the user's servers, each paired with its tools."""
+    async def list_servers(self, user_id: UUID) -> list[McpServer]:
+        """Return the user's servers (tools included)."""
         async with self._sessionmaker() as session:
-            servers = await McpServerRepo(session).list(McpServer.user_id == user_id)
-            trepo = McpToolRepo(session)
-            return [(s, await trepo.list_for_server(s.id)) for s in servers]
+            return await McpServerRepo(session).list(McpServer.user_id == user_id)
 
-    async def get_server(
-        self, user_id: UUID, server_id: UUID
-    ) -> tuple[McpServer, list[McpTool]] | None:
-        """Return a user-owned server and its tools, or None."""
+    async def get_server(self, user_id: UUID, server_id: UUID) -> McpServer | None:
+        """Return a user-owned server, or None."""
         async with self._sessionmaker() as session:
-            return await self._load(session, user_id, server_id)
+            return await self._owned(session, user_id, server_id)
 
     async def attach(
         self, user_id: UUID, name: str, url: str, headers: dict[str, str]
-    ) -> tuple[McpServer, list[McpTool]]:
+    ) -> McpServer:
         """Discover *url*'s tools and persist the server + tools (all enabled).
 
         Raises:
@@ -65,9 +61,7 @@ class McpService:
         """
         discovered = await mcp_adapter.discover(url, headers)  # raises → route maps to HTTP
         async with self._sessionmaker() as session:
-            repo = McpServerRepo(session)
-            trepo = McpToolRepo(session)
-            server = await repo.create(
+            server = await McpServerRepo(session).create(
                 user_id=user_id,
                 name=name,
                 url=url,
@@ -75,22 +69,18 @@ class McpService:
                 enabled=True,
                 last_connected_at=datetime.now(UTC),
                 last_error=None,
+                tools=[
+                    McpTool(
+                        name=d.name,
+                        description=d.description,
+                        input_schema=d.input_schema,
+                        enabled=True,
+                    )
+                    for d in discovered
+                ],
             )
-            tools = [
-                await trepo.create(
-                    server_id=server.id,
-                    name=d.name,
-                    description=d.description,
-                    input_schema=d.input_schema,
-                    enabled=True,
-                )
-                for d in discovered
-            ]
             await session.commit()
-            await session.refresh(server)
-            for tool in tools:
-                await session.refresh(tool)
-            return server, tools
+            return server
 
     async def update_server(
         self,
@@ -101,109 +91,99 @@ class McpService:
         url: str | None = None,
         headers: dict[str, str] | None = None,
         enabled: bool | None = None,
-    ) -> tuple[McpServer, list[McpTool]] | None:
-        """Update mutable server fields; return the server+tools, or None if not owned."""
-        fields: dict[str, object] = {}
-        if name is not None:
-            fields["name"] = name
-        if url is not None:
-            fields["url"] = url
-        if headers is not None:
-            fields["headers"] = headers
-        if enabled is not None:
-            fields["enabled"] = enabled
+    ) -> McpServer | None:
+        """Update mutable server fields; return the server, or None if not owned."""
+        patch = {"name": name, "url": url, "headers": headers, "enabled": enabled}
+        fields = {key: value for key, value in patch.items() if value is not None}
         async with self._sessionmaker() as session:
-            repo = McpServerRepo(session)
-            server = await repo.get(server_id)
-            if server is None or server.user_id != user_id:
+            server = await self._owned(session, user_id, server_id)
+            if server is None:
                 return None
             if fields:
-                await repo.update(server, **fields)
+                server = await McpServerRepo(session).update(server, **fields)
                 await session.commit()
-            return await self._load(session, user_id, server_id)
+                # The UPDATE flush expires updated_at (onupdate); reload before the session
+                # closes so serialization does not trigger a sync lazy load.
+                await session.refresh(server)
+            return server
 
     async def delete_server(self, user_id: UUID, server_id: UUID) -> bool:
         """Delete a user-owned server (cascades its tools); return whether it existed."""
         async with self._sessionmaker() as session:
-            repo = McpServerRepo(session)
-            server = await repo.get(server_id)
-            if server is None or server.user_id != user_id:
+            server = await self._owned(session, user_id, server_id)
+            if server is None:
                 return False
-            await repo.delete(server)
+            await McpServerRepo(session).delete(server)
             await session.commit()
             return True
 
-    async def refresh(
-        self, user_id: UUID, server_id: UUID
-    ) -> tuple[McpServer, list[McpTool]] | None:
+    async def refresh(self, user_id: UUID, server_id: UUID) -> McpServer | None:
         """Re-discover a server's tools, preserving each tool's enabled flag by name.
 
         Returns None if the server is not owned. On a discovery failure, records
         ``last_error`` and re-raises (an explicit action → actionable HTTP error).
         """
+        # Read connection details on a short session; the discovery round-trip then runs
+        # with no DB connection held.
         async with self._sessionmaker() as session:
-            loaded = await self._load(session, user_id, server_id)
-            if loaded is None:
+            server = await self._owned(session, user_id, server_id)
+            if server is None:
                 return None
-            server, _ = loaded
             url, headers = server.url, dict(server.headers)
         try:
             discovered = await mcp_adapter.discover(url, headers)
         except (McpUnreachableError, McpProtocolError) as exc:
             async with self._sessionmaker() as session:
                 repo = McpServerRepo(session)
-                server_row: McpServer | None = await repo.get(server_id)
-                if server_row is not None:
-                    await repo.update(server_row, last_error=str(exc))
+                failed = await repo.get(server_id)
+                if failed is not None:
+                    await repo.update(failed, last_error=str(exc))
                     await session.commit()
             raise
         async with self._sessionmaker() as session:
-            repo = McpServerRepo(session)
-            trepo = McpToolRepo(session)
-            existing = {t.name: t for t in await trepo.list_for_server(server_id)}
+            server = await self._owned(session, user_id, server_id)
+            if server is None:
+                return None
+            existing = {tool.name: tool for tool in server.tools}
             new_names = {d.name for d in discovered}
+            trepo = McpToolRepo(session)
             for name, tool in existing.items():
                 if name not in new_names:
-                    await trepo.delete(tool)
+                    server.tools.remove(tool)  # delete-orphan drops the row
             for d in discovered:
                 if d.name in existing:
                     await trepo.update(
                         existing[d.name], description=d.description, input_schema=d.input_schema
                     )
                 else:
-                    await trepo.create(
-                        server_id=server_id,
-                        name=d.name,
-                        description=d.description,
-                        input_schema=d.input_schema,
-                        enabled=True,
+                    server.tools.append(
+                        McpTool(
+                            name=d.name,
+                            description=d.description,
+                            input_schema=d.input_schema,
+                            enabled=True,
+                        )
                     )
-            refreshed_server = await repo.get(server_id)
-            if refreshed_server is None:
-                raise LookupError(f"MCP server {server_id} not found")
-            await repo.update(
-                refreshed_server,
-                last_connected_at=datetime.now(UTC),
-                last_error=None,
+            server = await McpServerRepo(session).update(
+                server, last_connected_at=datetime.now(UTC), last_error=None
             )
             await session.commit()
-            return await self._load(session, user_id, server_id)
+            await session.refresh(server)  # reload updated_at expired by the UPDATE flush
+            return server
 
     async def set_tool_enabled(
         self, user_id: UUID, server_id: UUID, tool_id: UUID, *, enabled: bool
     ) -> McpTool | None:
-        """Toggle a tool's enabled flag; return the tool, or None if not owned/found."""
+        """Toggle a tool's enabled flag (curation); return the tool, or None if not owned."""
         async with self._sessionmaker() as session:
-            server = await McpServerRepo(session).get(server_id)
-            if server is None or server.user_id != user_id:
+            server = await self._owned(session, user_id, server_id)
+            if server is None:
                 return None
-            trepo = McpToolRepo(session)
-            tool = await trepo.get(tool_id)
-            if tool is None or tool.server_id != server_id:
+            tool = next((t for t in server.tools if t.id == tool_id), None)
+            if tool is None:
                 return None
-            tool = await trepo.update(tool, enabled=enabled)
+            tool = await McpToolRepo(session).update(tool, enabled=enabled)
             await session.commit()
-            await session.refresh(tool)
             return tool
 
     async def enabled_tool_specs(self, user_id: UUID) -> list[McpServerSpec]:
@@ -217,15 +197,12 @@ class McpService:
             servers = await McpServerRepo(session).list(
                 McpServer.user_id == user_id, McpServer.enabled.is_(True)
             )
-            trepo = McpToolRepo(session)
             return [
                 McpServerSpec(
-                    prefix=_slug(s.name),
-                    url=s.url,
-                    headers=dict(s.headers),
-                    enabled_tools=frozenset(
-                        t.name for t in await trepo.list_for_server(s.id) if t.enabled
-                    ),
+                    prefix=_slug(server.name),
+                    url=server.url,
+                    headers=dict(server.headers),
+                    enabled_tools=frozenset(tool.name for tool in server.tools if tool.enabled),
                 )
-                for s in servers
+                for server in servers
             ]

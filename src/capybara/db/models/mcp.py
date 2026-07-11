@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from capybara.db.base import Base
 from capybara.db.mixins import TimestampMixin
@@ -34,6 +34,13 @@ class McpServer(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Discovered tools; ``selectin`` keeps them loaded on every server read (they are
+    #: needed by the API and per-turn tool assembly alike), which async requires anyway.
+    tools: Mapped[list[McpTool]] = relationship(
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="McpTool.created_at",
+    )
 
 
 class McpTool(Base, TimestampMixin):

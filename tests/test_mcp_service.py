@@ -40,12 +40,12 @@ async def test_attach_persists_server_and_tools(
     monkeypatch.setattr(mcp_adapter, "discover", fake_discover)
     service = McpService(_maker(session))
 
-    server, tools = await service.attach(user.id, "home", "http://ha/mcp", {"X-Api-Key": "k"})
+    server = await service.attach(user.id, "home", "http://ha/mcp", {"X-Api-Key": "k"})
 
     assert server.name == "home"
     assert server.last_connected_at is not None
-    assert {t.name for t in tools} == {"turn_on", "turn_off"}
-    assert all(t.enabled for t in tools)
+    assert {t.name for t in server.tools} == {"turn_on", "turn_off"}
+    assert all(t.enabled for t in server.tools)
 
 
 async def test_attach_unreachable_persists_nothing(
@@ -80,8 +80,8 @@ async def test_enabled_tool_specs_returns_langchain_ready_specs(
 
     monkeypatch.setattr(mcp_adapter, "discover", fake_discover)
     service = McpService(_maker(session))
-    server, tools = await service.attach(user.id, "home", "http://ha/mcp", {"X-Api-Key": "k"})
-    off = next(t for t in tools if t.name == "turn_off")
+    server = await service.attach(user.id, "home", "http://ha/mcp", {"X-Api-Key": "k"})
+    off = next(t for t in server.tools if t.name == "turn_off")
     await service.set_tool_enabled(user.id, server.id, off.id, enabled=False)
 
     specs = await service.enabled_tool_specs(user.id)
@@ -109,8 +109,8 @@ async def test_refresh_removes_tools_no_longer_reported(
 
     monkeypatch.setattr(mcp_adapter, "discover", discover_v1)
     service = McpService(_maker(session))
-    server, tools = await service.attach(user.id, "home", "http://ha/mcp", {})
-    assert {t.name for t in tools} == {"turn_on", "turn_off"}
+    server = await service.attach(user.id, "home", "http://ha/mcp", {})
+    assert {t.name for t in server.tools} == {"turn_on", "turn_off"}
 
     async def discover_v2(url, headers):  # type: ignore[no-untyped-def]
         return [DiscoveredTool("turn_on", "d", {})]  # turn_off no longer reported
@@ -118,13 +118,11 @@ async def test_refresh_removes_tools_no_longer_reported(
     monkeypatch.setattr(mcp_adapter, "discover", discover_v2)
     refreshed = await service.refresh(user.id, server.id)
     assert refreshed is not None
-    _server, refreshed_tools = refreshed
-    assert {t.name for t in refreshed_tools} == {"turn_on"}  # turn_off gone from return value
+    assert {t.name for t in refreshed.tools} == {"turn_on"}  # turn_off gone from return value
 
-    pairs = await service.list_servers(user.id)
-    assert pairs
-    _, listed_tools = pairs[0]
-    assert {t.name for t in listed_tools} == {"turn_on"}  # turn_off gone from list_for_server
+    listed = await service.list_servers(user.id)
+    assert listed
+    assert {t.name for t in listed[0].tools} == {"turn_on"}  # turn_off gone from the DB too
 
 
 async def test_refresh_preserves_enabled_flags(
@@ -140,8 +138,8 @@ async def test_refresh_preserves_enabled_flags(
 
     monkeypatch.setattr(mcp_adapter, "discover", discover_v1)
     service = McpService(_maker(session))
-    server, tools = await service.attach(user.id, "home", "http://ha/mcp", {})
-    off = next(t for t in tools if t.name == "turn_off")
+    server = await service.attach(user.id, "home", "http://ha/mcp", {})
+    off = next(t for t in server.tools if t.name == "turn_off")
     await service.set_tool_enabled(user.id, server.id, off.id, enabled=False)
 
     async def discover_v2(url, headers):  # type: ignore[no-untyped-def]
@@ -155,8 +153,7 @@ async def test_refresh_preserves_enabled_flags(
     monkeypatch.setattr(mcp_adapter, "discover", discover_v2)
     refreshed = await service.refresh(user.id, server.id)
     assert refreshed is not None
-    _server, refreshed_tools = refreshed
-    by_name = {t.name: t for t in refreshed_tools}
+    by_name = {t.name: t for t in refreshed.tools}
     assert set(by_name) == {"turn_on", "turn_off", "lock"}
     assert by_name["turn_off"].enabled is False  # preserved
     assert by_name["lock"].enabled is True  # new default

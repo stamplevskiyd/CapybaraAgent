@@ -46,7 +46,6 @@ class MemoryService:
                 source="manual",
             )
             await session.commit()
-            await session.refresh(fact)
             return fact
 
     async def update_fact(
@@ -57,26 +56,19 @@ class MemoryService:
         content: str | None = None,
         category: str | None = None,
     ) -> Fact | None:
-        """Update a fact's content and/or category; re-embed only when content changes.
+        """Update a fact's content and/or category; new content is re-embedded.
 
         Returns the updated fact, or ``None`` if it does not exist or is not owned by
         *user_id* (defence in depth — the route already gates ownership).
         """
-        # Read first on a short session; the embedding call (a provider round-trip) then
-        # runs with no DB connection held, so a slow Ollama can't exhaust the pool.
-        async with self._sessionmaker() as session:
-            fact = await FactRepo(session).get(fact_id)
-            if fact is None or fact.user_id != user_id:
-                return None
-            current_content = fact.content
         fields: dict[str, Any] = {}
         if category is not None:
             fields["category"] = category
-        if content is not None and content != current_content:
+        if content is not None:
             fields["content"] = content
+            # Embed before opening the session so the provider round-trip (a slow Ollama)
+            # never holds a DB connection.
             [fields["embedding"]] = await self._registry.embed([content])
-        if not fields:
-            return fact  # nothing to change; return the row read above
         async with self._sessionmaker() as session:
             repo = FactRepo(session)
             fact = await repo.get(fact_id)
