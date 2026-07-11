@@ -94,3 +94,31 @@ async def test_runner_factory_without_provider_builds_toolless_graph() -> None:
 
     assert calls == [[]]
     assert events == [RunnerEvent(kind="text", content="hello", name=None, payload=None)]
+
+
+async def test_build_graph_wires_model_tools_and_checkpointer(settings, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """build_graph hands the selected chat model, tools, and checkpointer to DeepAgents."""
+    from capybara.agent import deep_runtime
+    from capybara.agent.model_registry import ModelRegistry
+
+    captured: dict[str, object] = {}
+
+    def fake_create_deep_agent(**kwargs):  # type: ignore[no-untyped-def]
+        captured.update(kwargs)
+        return FakeGraph()
+
+    monkeypatch.setattr(deep_runtime, "create_deep_agent", fake_create_deep_agent)
+    sentinel_tool = object()
+    sentinel_checkpointer = object()
+
+    deep_runtime.build_graph(
+        ModelRegistry(settings),
+        [sentinel_tool],  # type: ignore[list-item]
+        model="llama3.1:8b",
+        checkpointer=sentinel_checkpointer,  # type: ignore[arg-type]
+    )
+
+    assert captured["model"].model == "llama3.1:8b"  # type: ignore[union-attr]
+    assert captured["tools"] == [sentinel_tool]
+    assert captured["checkpointer"] is sentinel_checkpointer
+    assert captured["system_prompt"] == deep_runtime.SYSTEM_PROMPT

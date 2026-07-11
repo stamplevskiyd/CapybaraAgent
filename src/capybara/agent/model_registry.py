@@ -23,10 +23,27 @@ class ModelRegistry:
     def __init__(self, settings: Settings) -> None:
         """Store settings used to reach Ollama."""
         self._settings = settings
+        self._client: httpx.AsyncClient | None = None
 
     def _client_factory(self) -> httpx.AsyncClient:
         """Create the httpx client used to query Ollama's native API (overridable in tests)."""
         return httpx.AsyncClient(timeout=10.0)
+
+    def _http(self) -> httpx.AsyncClient:
+        """Return the shared client, creating it on first use.
+
+        One pooled client per registry keeps connections to Ollama alive across the many
+        small calls (embed per fact, show per model) instead of a TCP handshake each time.
+        """
+        if self._client is None:
+            self._client = self._client_factory()
+        return self._client
+
+    async def aclose(self) -> None:
+        """Dispose the shared client (app shutdown); safe to call when never used."""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
 
     async def list_models(self) -> list[str]:
         """Return chat-capable Ollama model names.
@@ -36,11 +53,11 @@ class ModelRegistry:
         """
         base = self._settings.ollama_base_url
         try:
-            async with self._client_factory() as client:
-                response = await client.get(f"{base}/api/tags")
-                response.raise_for_status()
-                names = [str(entry["name"]) for entry in response.json()["models"]]
-                flags = await asyncio.gather(*(self._supports_chat(client, name) for name in names))
+            client = self._http()
+            response = await client.get(f"{base}/api/tags")
+            response.raise_for_status()
+            names = [str(entry["name"]) for entry in response.json()["models"]]
+            flags = await asyncio.gather(*(self._supports_chat(client, name) for name in names))
             return [name for name, keep in zip(names, flags, strict=True) if keep]
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
             raise ModelProviderError(base) from exc
@@ -72,8 +89,7 @@ class ModelRegistry:
         base = self._settings.ollama_base_url
         payload = {"model": self._settings.embedding_model, "input": list(texts)}
         try:
-            async with self._client_factory() as client:
-                response = await client.post(f"{base}/api/embed", json=payload)
+            response = await self._http().post(f"{base}/api/embed", json=payload)
         except httpx.HTTPError as exc:
             raise ModelProviderError(base) from exc
         if response.status_code == 404:

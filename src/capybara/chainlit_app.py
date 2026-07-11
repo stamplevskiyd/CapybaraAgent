@@ -1,5 +1,6 @@
 """Chainlit callbacks for CapybaraAgent chat runtime."""
 
+import logging
 from collections.abc import Callable
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from capybara.agent.deep_runtime import DeepAgentRunner
 from capybara.config import Settings, get_settings
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
+
+logger = logging.getLogger(__name__)
 
 #: Postgres schema holding Chainlit's data-layer tables, isolated from Capybara's own
 #: (notably Chainlit's ``users`` vs. the auth ``users`` table).
@@ -172,10 +175,21 @@ async def on_message(message: cl.Message) -> None:
     if _runtime_runner is None:
         raise RuntimeError("DeepAgentRunner is not configured")
     model = cl.user_session.get("model", _default_model)  # type: ignore[no-untyped-call]
-    await stream_agent_message(
-        runner=_runtime_runner,
-        content=message.content,
-        model=str(model),
-        thread_id=cl.context.session.id,
-        response=cl.Message(content=""),
-    )
+    try:
+        await stream_agent_message(
+            runner=_runtime_runner,
+            content=message.content,
+            model=str(model),
+            thread_id=cl.context.session.id,
+            response=cl.Message(content=""),
+        )
+    except Exception:
+        # Surface a readable failure instead of a dead spinner — with a local-first stack
+        # the usual cause is Ollama being down or the selected model not being pulled.
+        logger.exception("chat turn failed (model=%s)", model)
+        await cl.ErrorMessage(
+            content=(
+                f"The agent could not complete this turn with model {model!r}. "
+                "Check that Ollama is running and the selected model is installed."
+            )
+        ).send()  # type: ignore[no-untyped-call]  # Chainlit's API is untyped

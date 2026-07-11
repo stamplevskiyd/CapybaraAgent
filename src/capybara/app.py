@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from chainlit.utils import mount_chainlit
 from fastapi import FastAPI
+from langgraph.checkpoint.memory import InMemorySaver
 
 from capybara.agent.deep_runtime import DeepAgentRunner, build_graph
 from capybara.agent.deep_tools import CompositeToolProvider, McpToolProvider, MemoryToolProvider
@@ -43,8 +44,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         MemoryToolProvider(memory_service, get_user_id=current_user_id),
         McpToolProvider(mcp_service, get_user_id=current_user_id),
     )
+    # One process-wide checkpointer carries conversation state across per-turn graph
+    # rebuilds (keyed by thread_id). In-memory for now: history for the model resets on
+    # restart, while Chainlit's data layer keeps the visible transcript.
+    checkpointer = InMemorySaver()
     app.state.deep_agent_runner = DeepAgentRunner(
-        lambda tools, model: build_graph(settings, tools, model=model),
+        lambda tools, model: build_graph(
+            model_registry, tools, model=model, checkpointer=checkpointer
+        ),
         tool_provider=tool_provider,
     )
     configure_chainlit_runtime(
@@ -56,6 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await model_registry.aclose()
         await engine.dispose()
 
 

@@ -5,6 +5,7 @@ Ports the pydantic-ai tool seam (``capybara.services.memory_tools``) to LangChai
 boundary is reused unchanged so recalled facts keep their prompt-injection guard.
 """
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from typing import Protocol
@@ -92,21 +93,27 @@ async def build_mcp_tools(
 ) -> list[BaseTool]:
     """Build LangChain tools for the given MCP server specs, enabled tools only.
 
-    Fail-open: connecting to a server is also its reachability preflight, so a server that
-    is unreachable (or errors while listing) is logged and skipped rather than breaking the
-    turn. Tools are filtered to each server's enabled set by their prefixed names.
+    Servers are connected concurrently, so one slow or dead server costs the turn at most
+    its own connect timeout — not the sum over all servers. Fail-open: the connect doubles
+    as the reachability preflight, so a server that errors is logged and skipped rather
+    than breaking the turn. Tools are filtered to each server's enabled set by their
+    prefixed names.
     """
+    active = [spec for spec in specs if spec.enabled_tools]
+    results = await asyncio.gather(*(loader(spec) for spec in active), return_exceptions=True)
     tools: list[BaseTool] = []
-    for spec in specs:
-        if not spec.enabled_tools:
-            continue
-        try:
-            loaded = await loader(spec)
-        except Exception:  # noqa: BLE001 — fail open: a dead server must not break the reply
-            logger.warning("MCP server %r unreachable this turn; skipping its tools", spec.prefix)
+    for spec, result in zip(active, results, strict=True):
+        if isinstance(result, BaseException):
+            if isinstance(result, asyncio.CancelledError):
+                raise result  # a cancelled turn must stay cancelled, not fail open
+            logger.warning(
+                "MCP server %r unreachable this turn (%s); skipping its tools",
+                spec.prefix,
+                result,
+            )
             continue
         allowed = {f"{spec.prefix}_{name}" for name in spec.enabled_tools}
-        tools.extend(tool for tool in loaded if tool.name in allowed)
+        tools.extend(tool for tool in result if tool.name in allowed)
     return tools
 
 

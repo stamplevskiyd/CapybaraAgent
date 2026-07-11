@@ -77,3 +77,26 @@ async def test_list_models_raises_provider_error_when_unreachable(settings: Sett
     agent = _agent_with_transport(settings, handler)
     with pytest.raises(ModelProviderError):
         await agent.list_models()
+
+
+async def test_registry_reuses_one_shared_client(settings: Settings) -> None:
+    """Repeated calls share one pooled client; aclose() disposes it."""
+    factory_calls = 0
+    handler = _capability_handler({"llama3.1:8b": ["completion"]})
+    agent = ModelRegistry(settings)
+
+    def counting_factory() -> httpx.AsyncClient:
+        nonlocal factory_calls
+        factory_calls += 1
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    agent._client_factory = counting_factory  # type: ignore[method-assign]
+
+    await agent.list_models()
+    await agent.list_models()
+    assert factory_calls == 1
+
+    await agent.aclose()
+    await agent.list_models()  # a fresh client is created after close
+    assert factory_calls == 2
+    await agent.aclose()

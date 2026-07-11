@@ -2,20 +2,29 @@
 
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 
 from deepagents import create_deep_agent
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from capybara.agent.model_registry import ModelRegistry
-from capybara.config import Settings
+
+#: The kinds of normalized events the runner emits.
+RunnerEventKind = Literal["text", "tool_start", "tool_end"]
+
+#: System prompt for every Capybara chat run.
+SYSTEM_PROMPT = (
+    "You are CapybaraAgent, a local-first assistant. Use available tools when "
+    "they help answer the user's request. Prefer clear, concise answers."
+)
 
 
 @dataclass(frozen=True)
 class RunnerEvent:
     """Normalized event emitted by the agent runtime."""
 
-    kind: str
+    kind: RunnerEventKind
     content: str | None = None
     name: str | None = None
     payload: dict[str, Any] | None = None
@@ -146,23 +155,23 @@ class DeepAgentRunner:
 
 
 def build_graph(
-    settings: Settings,
+    registry: ModelRegistry,
     tools: Sequence[ToolLike] | None = None,
     *,
-    model: str | None = None,
+    model: str,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> EventStreamingGraph:
-    """Build the DeepAgents graph for Capybara chat runs.
+    """Build the DeepAgents graph for one Capybara chat turn.
 
-    *model* selects the chat model for the turn; it falls back to the configured default so
-    startup builds and toolless tests need not pass one.
+    *model* selects the chat model for the turn. *checkpointer* carries conversation state
+    across turns: the graph itself is rebuilt per turn (tools and model change), so any
+    memory of earlier messages lives in the shared checkpointer, keyed by the ``thread_id``
+    the runner passes in its config.
     """
-    registry = ModelRegistry(settings)
     graph = create_deep_agent(
-        model=registry.chat_model(model or settings.default_model),
+        model=registry.chat_model(model),
         tools=list(tools or []),
-        system_prompt=(
-            "You are CapybaraAgent, a local-first assistant. Use available tools when "
-            "they help answer the user's request. Prefer clear, concise answers."
-        ),
+        system_prompt=SYSTEM_PROMPT,
+        checkpointer=checkpointer,
     )
     return cast(EventStreamingGraph, graph)
