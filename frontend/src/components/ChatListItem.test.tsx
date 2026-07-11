@@ -8,6 +8,7 @@ const chat: ChatOut = {
   title: 'Мой чат',
   model: 'm',
   is_favorite: false,
+  mode: 'fast',
   created_at: '',
   updated_at: '',
 }

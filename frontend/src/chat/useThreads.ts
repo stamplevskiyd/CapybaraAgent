@@ -41,6 +41,7 @@ export function useThreads() {
             title: thread.name ?? 'Новый чат',
             model: pref?.model ?? null,
             is_favorite: pref?.is_favorite ?? false,
+            mode: pref?.mode ?? 'fast',
             created_at: createdAt,
             updated_at: createdAt,
           }

@@ -73,7 +73,7 @@ export function ChatScreen() {
       setActiveThreadId(newId)
       void (async () => {
         if (draftModel) {
-          await putChatPref(api, newId, { is_favorite: false, model: draftModel }).catch(
+          await putChatPref(api, newId, { is_favorite: false, model: draftModel, mode: 'fast' }).catch(
             () => undefined,
           )
         }
@@ -112,7 +112,7 @@ export function ChatScreen() {
     const next = !(chat?.is_favorite ?? false)
     patchLocal(id, { is_favorite: next })
     try {
-      await putChatPref(api, id, { is_favorite: next, model: chat?.model ?? null })
+      await putChatPref(api, id, { is_favorite: next, model: chat?.model ?? null, mode: chat?.mode ?? 'fast' })
     } catch {
       await reload()
     }
@@ -158,7 +158,7 @@ export function ChatScreen() {
       const wasFavorite = activeChat?.is_favorite ?? false
       patchLocal(activeThreadId, { model })
       try {
-        await putChatPref(api, activeThreadId, { is_favorite: wasFavorite, model })
+        await putChatPref(api, activeThreadId, { is_favorite: wasFavorite, model, mode: activeChat?.mode ?? 'fast' })
       } catch {
         await reload()
       }

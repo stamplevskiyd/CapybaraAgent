@@ -1,5 +1,7 @@
 /** Normalized chat message shapes shared by the Chainlit adapter and the assistant-ui bridge. */
 
+export type AgentMode = 'fast' | 'smart'
+
 export type ToolCallState = {
   id: string
   name: string

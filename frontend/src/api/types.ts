@@ -1,3 +1,6 @@
+export type { AgentMode } from '../chat/messages'
+import type { AgentMode } from '../chat/messages'
+
 export interface UserOut {
   id: string
   username: string
@@ -16,6 +19,7 @@ export interface ChatOut {
   title: string
   model: string | null
   is_favorite: boolean
+  mode: AgentMode
   created_at: string
   updated_at: string
 }
@@ -25,6 +29,7 @@ export interface ChatPrefOut {
   thread_id: string
   is_favorite: boolean
   model: string | null
+  mode: AgentMode
 }
 
 export interface ModelsOut {

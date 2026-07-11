@@ -37,8 +37,8 @@ test('deferred nav items are disabled; Память is an enabled button', () =>
 test('favorites appear under an Избранное group above date groups', () => {
   const now = new Date().toISOString()
   const chats = [
-    { id: 'a', title: 'Обычный', model: 'm', is_favorite: false, created_at: now, updated_at: now },
-    { id: 'b', title: 'Звёздный', model: 'm', is_favorite: true, created_at: now, updated_at: now },
+    { id: 'a', title: 'Обычный', model: 'm', is_favorite: false, mode: 'fast' as const, created_at: now, updated_at: now },
+    { id: 'b', title: 'Звёздный', model: 'm', is_favorite: true, mode: 'fast' as const, created_at: now, updated_at: now },
   ]
   render(
     <AuthProvider>
