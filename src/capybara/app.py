@@ -20,9 +20,11 @@ from capybara.config import get_settings
 from capybara.db.engine import create_engine, create_sessionmaker
 from capybara.db.models import ChatPref, Fact
 
-#: Where the Chainlit runtime is mounted and the module defining its callbacks.
+#: Where the Chainlit runtime is mounted, and the shim it loads. The shim (not
+#: chainlit_app.py itself) is the target because Chainlit executes the target file as a
+#: separate module instance — see capybara/chainlit_target.py.
 CHAINLIT_PATH = "/chainlit"
-CHAINLIT_TARGET = "src/capybara/chainlit_app.py"
+CHAINLIT_TARGET = "src/capybara/chainlit_target.py"
 
 
 @asynccontextmanager
