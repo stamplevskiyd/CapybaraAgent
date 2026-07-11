@@ -195,6 +195,31 @@ async def selected_model(metadata: dict[str, object] | None, thread_id: str) -> 
     return _default_model
 
 
+#: Valid agent modes; anything else resolves to the default.
+_AGENT_MODES = ("fast", "smart")
+
+
+async def selected_mode(metadata: dict[str, object] | None, thread_id: str) -> str:
+    """Resolve the agent mode for one turn.
+
+    Precedence mirrors ``selected_model``: the mode sent with this message, then the
+    thread's saved pref, then the default ``"fast"``. An unknown value resolves to the
+    default rather than raising.
+    """
+    candidate = (metadata or {}).get("mode")
+    if isinstance(candidate, str) and candidate in _AGENT_MODES:
+        return candidate
+    user_id = current_user_id()
+    if _pref_lookup is not None and user_id is not None:
+        try:
+            pref = await _pref_lookup(user_id, UUID(thread_id))
+        except ValueError:  # non-UUID thread id — nothing saved for it by definition
+            pref = None
+        if pref is not None and pref.mode in _AGENT_MODES:
+            return pref.mode
+    return "fast"
+
+
 @cl.on_chat_resume
 async def on_chat_resume(thread: ThreadDict) -> None:
     """Accept resuming a persisted thread.
@@ -214,11 +239,13 @@ async def on_message(message: cl.Message) -> None:
     # the id the client uses for the thread's prefs and history.
     thread_id = cl.context.session.thread_id
     model = await selected_model(message.metadata, thread_id)
+    mode = await selected_mode(message.metadata, thread_id)
     try:
         await stream_agent_message(
             runner=_runtime_runner,
             content=message.content,
             model=model,
+            mode=mode,
             thread_id=thread_id,
             response=cl.Message(content=""),
         )

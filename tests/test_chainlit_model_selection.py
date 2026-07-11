@@ -8,8 +8,10 @@ from capybara import chainlit_app
 
 
 class FakePref:
-    def __init__(self, model: str | None) -> None:
+    def __init__(self, model: str | None, mode: str = "fast") -> None:
+        """Initialise a fake preference with optional model and mode."""
         self.model = model
+        self.mode = mode
 
 
 class FakePrefLookup:
@@ -78,3 +80,27 @@ async def test_falls_back_to_default_when_unauthenticated(
     configured(FakePrefLookup(FakePref("pref-model")))
     monkeypatch.setattr(chainlit_app, "current_user_id", lambda: None)
     assert await chainlit_app.selected_model(None, str(uuid4())) == "default-model"
+
+
+async def test_mode_from_metadata_wins(configured) -> None:  # type: ignore[no-untyped-def]
+    """A mode sent with the message itself beats prefs and default."""
+    configured(FakePrefLookup(FakePref(None, mode="fast")))
+    assert await chainlit_app.selected_mode({"mode": "smart"}, str(uuid4())) == "smart"
+
+
+async def test_mode_from_pref_when_no_metadata(configured) -> None:  # type: ignore[no-untyped-def]
+    """The thread's saved pref is used when the message carries no mode."""
+    configured(FakePrefLookup(FakePref(None, mode="smart")))
+    assert await chainlit_app.selected_mode(None, str(uuid4())) == "smart"
+
+
+async def test_mode_defaults_to_fast(configured) -> None:  # type: ignore[no-untyped-def]
+    """Falls back to ``"fast"`` when there is no metadata and no pref."""
+    configured(FakePrefLookup(None))
+    assert await chainlit_app.selected_mode(None, str(uuid4())) == "fast"
+
+
+async def test_mode_ignores_invalid_metadata_value(configured) -> None:  # type: ignore[no-untyped-def]
+    """An unknown mode value in metadata resolves to the default ``"fast"``."""
+    configured(FakePrefLookup(None))
+    assert await chainlit_app.selected_mode({"mode": "bogus"}, str(uuid4())) == "fast"
