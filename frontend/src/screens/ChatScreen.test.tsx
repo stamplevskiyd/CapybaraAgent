@@ -4,7 +4,7 @@ import { server, http, HttpResponse } from '../test/msw'
 import { AuthProvider } from '../auth/AuthContext'
 import { ChatScreen } from './ChatScreen'
 
-const sent = vi.hoisted(() => ({ calls: [] as { content: string; model?: string | null }[] }))
+const sent = vi.hoisted(() => ({ calls: [] as { content: string; model?: string | null; mode?: string }[] }))
 const openThreadSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('../chainlit/useChainlitThread', async () => {
@@ -20,8 +20,8 @@ vi.mock('../chainlit/useChainlitThread', async () => {
   return {
     useChainlitThread: () => {
       const [messages, setMessages] = React.useState<Message[]>([])
-      const send = React.useCallback(async (content: string, model?: string | null) => {
-        sent.calls.push({ content, model })
+      const send = React.useCallback(async (content: string, model?: string | null, mode?: string) => {
+        sent.calls.push({ content, model, mode })
         setMessages((prev) => [
           ...prev,
           { id: `user-${nextId++}`, role: 'user', content, streaming: false },
@@ -97,11 +97,11 @@ test('welcome greets the user and streams a reply after sending', async () => {
   expect(await screen.findByText(/Чем помочь, roman/)).toBeInTheDocument()
   await userEvent.type(screen.getByRole('textbox'), 'Привет{Enter}')
   expect(await screen.findByText('Здравствуйте')).toBeInTheDocument()
-  // The selected model rides in the message itself — the backend reads it from there.
-  expect(sent.calls).toEqual([{ content: 'Привет', model: 'llama3.1:8b' }])
+  // The selected model and mode ride in the message itself — the backend reads them from there.
+  expect(sent.calls).toEqual([{ content: 'Привет', model: 'llama3.1:8b', mode: 'fast' }])
   // Adopting the new thread id also persists that model so the thread remembers it.
   await waitFor(() => expect(prefPut).not.toBeNull())
-  expect(prefPut).toEqual({ id: 'th-new', body: { is_favorite: false, model: 'llama3.1:8b' } })
+  expect(prefPut).toMatchObject({ id: 'th-new', body: { is_favorite: false, model: 'llama3.1:8b' } })
 })
 
 test('composer lists fetched models and blocks send until a model is valid', async () => {
@@ -232,7 +232,36 @@ test('selecting a model on an active thread persists it to chat-prefs', async ()
   await userEvent.click(await screen.findByText('Мой чат'))
   await userEvent.selectOptions(await screen.findByLabelText('Модель'), 'qwen3:8b')
 
-  await waitFor(() => expect(putBody).toEqual({ is_favorite: false, model: 'qwen3:8b' }))
+  await waitFor(() => expect(putBody).toMatchObject({ is_favorite: false, model: 'qwen3:8b' }))
+})
+
+test('selecting a mode on an active thread persists it to chat-prefs', async () => {
+  let putBody: unknown = null
+  server.use(
+    http.get('/api/models', () =>
+      HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
+    ),
+    http.post('/chainlit/project/threads', () =>
+      HttpResponse.json({
+        pageInfo: { hasNextPage: false, startCursor: null, endCursor: null },
+        data: [thread],
+      }),
+    ),
+    http.put('/api/chat-prefs/c1', async ({ request }) => {
+      putBody = await request.json()
+      return HttpResponse.json({ thread_id: 'c1', is_favorite: false, model: null, mode: 'smart' })
+    }),
+  )
+  render(
+    <AuthProvider>
+      <ChatScreen />
+    </AuthProvider>,
+  )
+  await userEvent.click(await screen.findByText('Мой чат'))
+  await userEvent.selectOptions(await screen.findByLabelText('Режим агента'), 'smart')
+  await waitFor(() =>
+    expect(putBody).toMatchObject({ mode: 'smart' }),
+  )
 })
 
 test('the sidebar can be collapsed and expanded via the toggle buttons', async () => {

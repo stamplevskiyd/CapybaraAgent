@@ -11,6 +11,7 @@
  */
 import { ComposerPrimitive, ThreadPrimitive } from '@assistant-ui/react'
 import { ArrowUp, Paperclip, Square } from 'lucide-react'
+import type { AgentMode } from '../chat/messages'
 import styles from './Composer.module.css'
 
 /**
@@ -24,6 +25,8 @@ export function Composer({
   models,
   selectedModel,
   onSelectModel,
+  selectedMode,
+  onSelectMode,
 }: {
   /** Available model names from Ollama. */
   models: string[]
@@ -31,6 +34,10 @@ export function Composer({
   selectedModel: string | null
   /** Called when the user picks a model from the selector. */
   onSelectModel: (m: string) => void
+  /** Currently selected agent mode. */
+  selectedMode: AgentMode
+  /** Called when the user picks a mode from the selector. */
+  onSelectMode: (m: AgentMode) => void
 }) {
   const modelValid = selectedModel !== null && models.includes(selectedModel)
   return (
@@ -60,6 +67,15 @@ export function Composer({
               {m}
             </option>
           ))}
+        </select>
+        <select
+          className={styles.modelSelect}
+          aria-label="Режим агента"
+          value={selectedMode}
+          onChange={(e) => onSelectMode(e.target.value as AgentMode)}
+        >
+          <option value="fast">Быстрый</option>
+          <option value="smart">Умный</option>
         </select>
         <div className={styles.spacer} />
         {/* Show Send button when thread is idle; disabled also when no valid model. */}

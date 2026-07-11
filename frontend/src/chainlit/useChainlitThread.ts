@@ -8,6 +8,7 @@ import {
 import { useAuth } from '../auth/AuthContext'
 import { chainlitClient } from './client'
 import { convertChainlitMessages } from './convertChainlitMessage'
+import type { AgentMode } from '../chat/messages'
 
 export function useChainlitThread() {
   const { messages: chainlitMessages, threadId } = useChatMessages()
@@ -44,14 +45,13 @@ export function useChainlitThread() {
   const messages = useMemo(() => convertChainlitMessages(chainlitMessages), [chainlitMessages])
 
   const send = useCallback(
-    async (content: string, model?: string | null) => {
+    async (content: string, model?: string | null, mode?: AgentMode) => {
       sendMessage({
         name: 'user',
         type: 'user_message',
         output: content,
-        // The backend reads the turn's model from here — the only channel that exists
-        // before a brand-new thread has saved prefs.
-        metadata: model ? { model } : undefined,
+        // The backend reads the turn's model AND mode from here.
+        metadata: { ...(model ? { model } : {}), ...(mode ? { mode } : {}) },
       })
     },
     [sendMessage],

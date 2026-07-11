@@ -139,7 +139,7 @@ describe('useChainlitThread', () => {
       name: 'user',
       type: 'user_message',
       output: 'Hello Chainlit',
-      metadata: undefined,
+      metadata: {},
     })
   })
 

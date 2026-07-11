@@ -16,6 +16,7 @@ import { useChatRuntime } from '../chat/runtime'
 import { chainlitClient } from '../chainlit/client'
 import { deleteChatPref, putChatPref } from '../chat/chatPrefs'
 import { loadLastModel, saveLastModel } from '../chat/lastModel'
+import type { AgentMode } from '../chat/messages'
 import styles from './ChatScreen.module.css'
 
 /**
@@ -32,6 +33,10 @@ export function ChatScreen() {
   const api = useApiClient()
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [draftModel, setDraftModel] = useState<string | null>(() => loadLastModel())
+  const [draftMode, setDraftMode] = useState<AgentMode>(() => {
+    const v = localStorage.getItem('capybara.lastMode')
+    return v === 'smart' ? 'smart' : 'fast'
+  })
   const [view, setView] = useState<'chat' | 'memory' | 'mcp'>('chat')
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -73,17 +78,18 @@ export function ChatScreen() {
       setActiveThreadId(newId)
       void (async () => {
         if (draftModel) {
-          await putChatPref(api, newId, { is_favorite: false, model: draftModel, mode: 'fast' }).catch(
+          await putChatPref(api, newId, { is_favorite: false, model: draftModel, mode: draftMode }).catch(
             () => undefined,
           )
         }
         await reload()
       })()
     }
-  }, [activeThreadId, threadId, messages.length, reload, api, draftModel])
+  }, [activeThreadId, threadId, messages.length, reload, api, draftModel, draftMode])
 
   const activeChat = chats.find((c) => c.id === activeThreadId)
   const selectedModel = activeChat?.model ?? draftModel
+  const selectedMode = activeChat?.mode ?? draftMode
 
   /**
    * Send a message with the selected model riding in its metadata.
@@ -92,7 +98,7 @@ export function ChatScreen() {
   async function handleSend(text: string) {
     const modelValid = selectedModel !== null && models.includes(selectedModel)
     if (!modelValid) return
-    await send(text, selectedModel)
+    await send(text, selectedModel, selectedMode)
   }
 
   const runtime = useChatRuntime({
@@ -158,7 +164,28 @@ export function ChatScreen() {
       const wasFavorite = activeChat?.is_favorite ?? false
       patchLocal(activeThreadId, { model })
       try {
-        await putChatPref(api, activeThreadId, { is_favorite: wasFavorite, model, mode: activeChat?.mode ?? 'fast' })
+        await putChatPref(api, activeThreadId, { is_favorite: wasFavorite, model, mode: selectedMode })
+      } catch {
+        await reload()
+      }
+    }
+  }
+
+  /**
+   * Update the selected agent mode; persists to localStorage, updates the draft, and saves
+   * the active thread's pref if one is open. A failed save re-syncs from the server.
+   */
+  async function handleSelectMode(mode: AgentMode) {
+    localStorage.setItem('capybara.lastMode', mode)
+    setDraftMode(mode)
+    if (activeThreadId) {
+      patchLocal(activeThreadId, { mode })
+      try {
+        await putChatPref(api, activeThreadId, {
+          is_favorite: activeChat?.is_favorite ?? false,
+          model: activeChat?.model ?? draftModel,
+          mode,
+        })
       } catch {
         await reload()
       }
@@ -228,6 +255,8 @@ export function ChatScreen() {
                   models={models}
                   selectedModel={selectedModel}
                   onSelectModel={handleSelectModel}
+                  selectedMode={selectedMode}
+                  onSelectMode={handleSelectMode}
                 />
               </div>
             </div>
@@ -247,6 +276,8 @@ export function ChatScreen() {
                     models={models}
                     selectedModel={selectedModel}
                     onSelectModel={handleSelectModel}
+                    selectedMode={selectedMode}
+                    onSelectMode={handleSelectMode}
                   />
                 </div>
               </div>
