@@ -10,6 +10,9 @@ const defaultHandlers = [
     HttpResponse.json({ pageInfo: { hasNextPage: false, startCursor: null, endCursor: null }, data: [] }),
   ),
   http.get('/api/chat-prefs', () => HttpResponse.json([])),
+  http.put('/api/chat-prefs/:threadId', ({ params }) =>
+    HttpResponse.json({ thread_id: params.threadId, is_favorite: false, model: null }),
+  ),
 ]
 
 export const server = setupServer(...defaultHandlers)

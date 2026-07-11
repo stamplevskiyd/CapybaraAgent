@@ -79,10 +79,15 @@ const thread = {
 
 test('welcome greets the user and streams a reply after sending', async () => {
   localStorage.setItem('capybara.lastModel', 'llama3.1:8b')
+  let prefPut: { id: string; body: unknown } | null = null
   server.use(
     http.get('/api/models', () =>
       HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
     ),
+    http.put('/api/chat-prefs/:threadId', async ({ params, request }) => {
+      prefPut = { id: String(params.threadId), body: await request.json() }
+      return HttpResponse.json({ thread_id: params.threadId, is_favorite: false, model: null })
+    }),
   )
   render(
     <AuthProvider>
@@ -94,6 +99,9 @@ test('welcome greets the user and streams a reply after sending', async () => {
   expect(await screen.findByText('Здравствуйте')).toBeInTheDocument()
   // The selected model rides in the message itself — the backend reads it from there.
   expect(sent.calls).toEqual([{ content: 'Привет', model: 'llama3.1:8b' }])
+  // Adopting the new thread id also persists that model so the thread remembers it.
+  await waitFor(() => expect(prefPut).not.toBeNull())
+  expect(prefPut).toEqual({ id: 'th-new', body: { is_favorite: false, model: 'llama3.1:8b' } })
 })
 
 test('composer lists fetched models and blocks send until a model is valid', async () => {

@@ -64,14 +64,23 @@ export function ChatScreen() {
     if (connected) void reload()
   }, [connected, reload])
 
-  // Adopt the server-assigned thread id once the first message of a fresh chat exists,
-  // and refresh the sidebar so the new thread appears in the list.
+  // Adopt the server-assigned thread id once the first message of a fresh chat exists.
+  // Persist the model that was used (until now it only lived in the draft + message
+  // metadata) so the thread remembers it across reloads, then refresh the sidebar.
   useEffect(() => {
     if (activeThreadId === null && threadId && messages.length > 0) {
-      setActiveThreadId(threadId)
-      void reload()
+      const newId = threadId
+      setActiveThreadId(newId)
+      void (async () => {
+        if (draftModel) {
+          await putChatPref(api, newId, { is_favorite: false, model: draftModel }).catch(
+            () => undefined,
+          )
+        }
+        await reload()
+      })()
     }
-  }, [activeThreadId, threadId, messages.length, reload])
+  }, [activeThreadId, threadId, messages.length, reload, api, draftModel])
 
   const activeChat = chats.find((c) => c.id === activeThreadId)
   const selectedModel = activeChat?.model ?? draftModel
