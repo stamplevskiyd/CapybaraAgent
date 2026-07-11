@@ -1,4 +1,4 @@
-"""Tests for McpService against real Postgres, with the MCP adapter mocked."""
+"""Tests for the MCP commands against real Postgres, with the adapter mocked."""
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -6,7 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from capybara.agent import mcp as mcp_adapter
 from capybara.agent.deep_tools import McpServerSpec
 from capybara.agent.mcp import DiscoveredTool, McpUnreachableError
-from capybara.services.mcp_service import McpService
+from capybara.commands.mcp.attach import AttachMcpServer
+from capybara.commands.mcp.list_servers import ListMcpServers
+from capybara.commands.mcp.refresh import RefreshMcpServer
+from capybara.commands.mcp.set_tool_enabled import SetMcpToolEnabled
+from capybara.commands.mcp.tool_specs import ListEnabledToolSpecs
 
 pytestmark = pytest.mark.asyncio
 
@@ -38,9 +42,11 @@ async def test_attach_persists_server_and_tools(
         return [DiscoveredTool("turn_on", "d", {}), DiscoveredTool("turn_off", None, None)]
 
     monkeypatch.setattr(mcp_adapter, "discover", fake_discover)
-    service = McpService(_maker(session))
+    maker = _maker(session)
 
-    server = await service.attach(user.id, "home", "http://ha/mcp", {"X-Api-Key": "k"})
+    server = await AttachMcpServer(
+        maker, user_id=user.id, name="home", url="http://ha/mcp", headers={"X-Api-Key": "k"}
+    ).execute()
 
     assert server.name == "home"
     assert server.last_connected_at is not None
@@ -60,11 +66,13 @@ async def test_attach_unreachable_persists_nothing(
         raise McpUnreachableError("refused")
 
     monkeypatch.setattr(mcp_adapter, "discover", boom)
-    service = McpService(_maker(session))
+    maker = _maker(session)
 
     with pytest.raises(McpUnreachableError):
-        await service.attach(user.id, "home", "http://ha/mcp", {})
-    assert await service.list_servers(user.id) == []
+        await AttachMcpServer(
+            maker, user_id=user.id, name="home", url="http://ha/mcp", headers={}
+        ).execute()
+    assert await ListMcpServers(maker, user_id=user.id).execute() == []
 
 
 async def test_enabled_tool_specs_returns_langchain_ready_specs(
@@ -79,12 +87,16 @@ async def test_enabled_tool_specs_returns_langchain_ready_specs(
         return [DiscoveredTool("turn_on", "d", {}), DiscoveredTool("turn_off", None, None)]
 
     monkeypatch.setattr(mcp_adapter, "discover", fake_discover)
-    service = McpService(_maker(session))
-    server = await service.attach(user.id, "home", "http://ha/mcp", {"X-Api-Key": "k"})
+    maker = _maker(session)
+    server = await AttachMcpServer(
+        maker, user_id=user.id, name="home", url="http://ha/mcp", headers={"X-Api-Key": "k"}
+    ).execute()
     off = next(t for t in server.tools if t.name == "turn_off")
-    await service.set_tool_enabled(user.id, server.id, off.id, enabled=False)
+    await SetMcpToolEnabled(
+        maker, user_id=user.id, server_id=server.id, tool_id=off.id, enabled=False
+    ).execute()
 
-    specs = await service.enabled_tool_specs(user.id)
+    specs = await ListEnabledToolSpecs(maker, user_id=user.id).execute()
 
     assert specs == [
         McpServerSpec(
@@ -108,19 +120,21 @@ async def test_refresh_removes_tools_no_longer_reported(
         return [DiscoveredTool("turn_on", "d", {}), DiscoveredTool("turn_off", None, None)]
 
     monkeypatch.setattr(mcp_adapter, "discover", discover_v1)
-    service = McpService(_maker(session))
-    server = await service.attach(user.id, "home", "http://ha/mcp", {})
+    maker = _maker(session)
+    server = await AttachMcpServer(
+        maker, user_id=user.id, name="home", url="http://ha/mcp", headers={}
+    ).execute()
     assert {t.name for t in server.tools} == {"turn_on", "turn_off"}
 
     async def discover_v2(url, headers):  # type: ignore[no-untyped-def]
         return [DiscoveredTool("turn_on", "d", {})]  # turn_off no longer reported
 
     monkeypatch.setattr(mcp_adapter, "discover", discover_v2)
-    refreshed = await service.refresh(user.id, server.id)
+    refreshed = await RefreshMcpServer(maker, user_id=user.id, server_id=server.id).execute()
     assert refreshed is not None
     assert {t.name for t in refreshed.tools} == {"turn_on"}  # turn_off gone from return value
 
-    listed = await service.list_servers(user.id)
+    listed = await ListMcpServers(maker, user_id=user.id).execute()
     assert listed
     assert {t.name for t in listed[0].tools} == {"turn_on"}  # turn_off gone from the DB too
 
@@ -137,10 +151,14 @@ async def test_refresh_preserves_enabled_flags(
         return [DiscoveredTool("turn_on", "d", {}), DiscoveredTool("turn_off", None, None)]
 
     monkeypatch.setattr(mcp_adapter, "discover", discover_v1)
-    service = McpService(_maker(session))
-    server = await service.attach(user.id, "home", "http://ha/mcp", {})
+    maker = _maker(session)
+    server = await AttachMcpServer(
+        maker, user_id=user.id, name="home", url="http://ha/mcp", headers={}
+    ).execute()
     off = next(t for t in server.tools if t.name == "turn_off")
-    await service.set_tool_enabled(user.id, server.id, off.id, enabled=False)
+    await SetMcpToolEnabled(
+        maker, user_id=user.id, server_id=server.id, tool_id=off.id, enabled=False
+    ).execute()
 
     async def discover_v2(url, headers):  # type: ignore[no-untyped-def]
         # turn_on stays, turn_off stays (disabled must persist), lock is new
@@ -151,7 +169,7 @@ async def test_refresh_preserves_enabled_flags(
         ]
 
     monkeypatch.setattr(mcp_adapter, "discover", discover_v2)
-    refreshed = await service.refresh(user.id, server.id)
+    refreshed = await RefreshMcpServer(maker, user_id=user.id, server_id=server.id).execute()
     assert refreshed is not None
     by_name = {t.name: t for t in refreshed.tools}
     assert set(by_name) == {"turn_on", "turn_off", "lock"}

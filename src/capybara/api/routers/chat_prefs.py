@@ -1,25 +1,22 @@
 """Router for per-thread chat preferences (favorite, selected model)."""
 
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, status
 
-from capybara.api.dependencies import get_chat_pref_service, get_current_user
+from capybara.api.dependencies import CurrentUser, Sessionmaker
 from capybara.api.schemas import ChatPrefOut, ChatPrefUpsert
-from capybara.db.models import User
-from capybara.services.chat_pref_service import ChatPrefService
+from capybara.commands.chat_pref.delete import DeleteChatPref
+from capybara.commands.chat_pref.list import ListChatPrefs
+from capybara.commands.chat_pref.upsert import UpsertChatPref
 
 router = APIRouter(prefix="/chat-prefs", tags=["chat-prefs"])
 
 
 @router.get("")
-async def list_chat_prefs(
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[ChatPrefService, Depends(get_chat_pref_service)],
-) -> list[ChatPrefOut]:
+async def list_chat_prefs(user: CurrentUser, sessionmaker: Sessionmaker) -> list[ChatPrefOut]:
     """Return the current user's chat prefs, to merge into the Chainlit thread list."""
-    prefs = await service.list_prefs(user.id)
+    prefs = await ListChatPrefs(sessionmaker, user_id=user.id).execute()
     return [ChatPrefOut.model_validate(p) for p in prefs]
 
 
@@ -27,19 +24,25 @@ async def list_chat_prefs(
 async def upsert_chat_pref(
     thread_id: UUID,
     body: ChatPrefUpsert,
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[ChatPrefService, Depends(get_chat_pref_service)],
+    user: CurrentUser,
+    sessionmaker: Sessionmaker,
 ) -> ChatPrefOut:
     """Set a thread's favorite flag and selected model for the current user."""
-    pref = await service.upsert(user.id, thread_id, is_favorite=body.is_favorite, model=body.model)
+    pref = await UpsertChatPref(
+        sessionmaker,
+        user_id=user.id,
+        thread_id=thread_id,
+        is_favorite=body.is_favorite,
+        model=body.model,
+    ).execute()
     return ChatPrefOut.model_validate(pref)
 
 
 @router.delete("/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_chat_pref(
     thread_id: UUID,
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[ChatPrefService, Depends(get_chat_pref_service)],
+    user: CurrentUser,
+    sessionmaker: Sessionmaker,
 ) -> None:
     """Delete a thread's pref (called when its chat is deleted)."""
-    await service.delete(user.id, thread_id)
+    await DeleteChatPref(sessionmaker, user_id=user.id, thread_id=thread_id).execute()

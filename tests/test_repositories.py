@@ -1,10 +1,13 @@
 from datetime import UTC, datetime, timedelta
+from typing import ClassVar
 from uuid import uuid4
 
 import pytest
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import Fact, User
+from capybara.filters import FieldEquals, Filter
 from capybara.repositories.fact_repo import FactRepo
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.passwords import hash_password
@@ -28,6 +31,15 @@ async def test_user_repo_get(session: AsyncSession) -> None:
     assert await UserRepo(session).get(uuid4()) is None
 
 
+async def test_get_one_by_field(session: AsyncSession) -> None:
+    """get_one returns the single match by an arbitrary filter, or None."""
+    await _seed_user(session, username="alpha")
+    repo = UserRepo(session)
+    found = await repo.get_one(FieldEquals(User.username, "alpha"))
+    assert found is not None and found.username == "alpha"
+    assert await repo.get_one(FieldEquals(User.username, "ghost")) is None
+
+
 async def test_base_repo_update_persists_field(session: AsyncSession) -> None:
     """update() with a valid mapped field changes the attribute and flushes."""
     user = await _seed_user(session)
@@ -40,6 +52,22 @@ async def test_base_repo_update_persists_field(session: AsyncSession) -> None:
     assert refetched.display_name == "Renamed"
 
 
+async def test_base_repo_update_accepts_pydantic_payload(session: AsyncSession) -> None:
+    """update() unpacks a pydantic model's set fields; explicit kwargs override it."""
+
+    class UserPatch(BaseModel):
+        display_name: str | None = None
+
+    user = await _seed_user(session)
+    repo = UserRepo(session)
+    updated = await repo.update(user, data=UserPatch(display_name="From payload"))
+    assert updated.display_name == "From payload"
+
+    # Unset payload fields are not applied — display_name stays as-is.
+    updated = await repo.update(user, data=UserPatch())
+    assert updated.display_name == "From payload"
+
+
 async def test_base_repo_update_rejects_unknown_field(session: AsyncSession) -> None:
     """update() with a non-mapped key raises ValueError instead of silently passing."""
     user = await _seed_user(session)
@@ -47,8 +75,33 @@ async def test_base_repo_update_rejects_unknown_field(session: AsyncSession) -> 
         await UserRepo(session).update(user, display_nam="typo")
 
 
+async def test_default_filters_apply_and_can_be_bypassed(session: AsyncSession) -> None:
+    """default_filters scope every read; bypass_default_filters=True lifts them."""
+
+    class ManualFactRepo(FactRepo):
+        default_filters: ClassVar[tuple[Filter, ...]] = (FieldEquals(Fact.source, "manual"),)
+
+    user = await _seed_user(session)
+    repo = ManualFactRepo(session)
+    vec = [1.0] + [0.0] * 767
+    await repo.create(
+        user_id=user.id, category="personal", content="manual", embedding=vec, source="manual"
+    )
+    await repo.create(
+        user_id=user.id, category="personal", content="auto", embedding=vec, source="auto"
+    )
+
+    scoped = await repo.get_list(FieldEquals(Fact.user_id, user.id))
+    assert [f.content for f in scoped] == ["manual"]
+
+    everything = await repo.get_list(
+        FieldEquals(Fact.user_id, user.id), bypass_default_filters=True
+    )
+    assert {f.content for f in everything} == {"manual", "auto"}
+
+
 async def test_user_repo_list_orders_by_created_at_asc(session: AsyncSession) -> None:
-    """UserRepo.list() returns users ordered by created_at ascending."""
+    """UserRepo.get_list() returns users ordered by created_at ascending."""
     now = datetime.now(UTC)
     older = User(
         username="aaa_older",
@@ -67,15 +120,15 @@ async def test_user_repo_list_orders_by_created_at_asc(session: AsyncSession) ->
     session.add_all([older, newer])
     await session.flush()
 
-    users = await UserRepo(session).list()
+    users = await UserRepo(session).get_list()
     usernames = [u.username for u in users]
     idx_older = usernames.index("aaa_older")
     idx_newer = usernames.index("bbb_newer")
     assert idx_older < idx_newer, "older created_at user must appear before newer"
 
 
-async def test_list_criterion_scopes_correctly(session: AsyncSession) -> None:
-    """list() with a criterion returns only rows matching it."""
+async def test_get_list_filter_scopes_correctly(session: AsyncSession) -> None:
+    """get_list(FieldEquals(...)) returns only rows matching the filter value."""
     user_a = await _seed_user(session)
     user_b = await _seed_user(session, username="userb")
     vec = [1.0] + [0.0] * 767
@@ -87,7 +140,7 @@ async def test_list_criterion_scopes_correctly(session: AsyncSession) -> None:
         user_id=user_b.id, category="personal", content="b-fact", embedding=vec, source="manual"
     )
 
-    result = await repo.list(Fact.user_id == user_a.id)
+    result = await repo.get_list(FieldEquals(Fact.user_id, user_a.id))
     assert [f.content for f in result] == ["a-fact"]
 
 
@@ -125,16 +178,3 @@ async def test_fact_repo_search_is_user_scoped(session: AsyncSession) -> None:
 
     results = await repo.search(user_a.id, vec, k=5)
     assert results == []
-
-
-async def test_fact_model_persists_with_embedding(session: AsyncSession) -> None:
-    user = await _seed_user(session)
-    fact = await FactRepo(session).create(
-        user_id=user.id,
-        category="personal",
-        content="Пьёт чай без сахара",
-        embedding=[0.1] * 768,
-        source="manual",
-    )
-    assert fact.id is not None
-    assert fact.created_at is not None

@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from capybara.db.models import McpServer, McpTool
+from capybara.filters import FieldEquals
 from capybara.repositories.mcp_repo import McpServerRepo
 
 pytestmark = pytest.mark.asyncio
@@ -25,7 +26,7 @@ async def test_server_and_tools_roundtrip(session: AsyncSession, make_user) -> N
         ],
     )
 
-    listed = await servers.list(McpServer.user_id == user.id)
+    listed = await servers.get_list(FieldEquals(McpServer.user_id, user.id))
     assert [s.name for s in listed] == ["home"]
     assert listed[0].headers == {"Authorization": "Bearer x"}
 

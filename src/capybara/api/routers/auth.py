@@ -1,12 +1,10 @@
 """Router for authentication endpoints."""
 
-from typing import Annotated
+from fastapi import APIRouter, HTTPException, status
 
-from fastapi import APIRouter, Depends, HTTPException, status
-
-from capybara.api.dependencies import get_auth_service
+from capybara.api.dependencies import AppSettings, Sessionmaker
 from capybara.api.schemas import LoginRequest, TokenResponse
-from capybara.services.auth_service import AuthService, InvalidCredentials
+from capybara.commands.auth.login import InvalidCredentials, LoginUser
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -14,11 +12,20 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/login", response_model=TokenResponse)
 async def login(
     payload: LoginRequest,
-    auth: Annotated[AuthService, Depends(get_auth_service)],
+    sessionmaker: Sessionmaker,
+    settings: AppSettings,
 ) -> TokenResponse:
     """Authenticate and return a JWT bearer token; 401 on invalid credentials."""
+    command = LoginUser(
+        sessionmaker,
+        username=payload.username,
+        password=payload.password,
+        secret=settings.jwt_secret,
+        ttl_minutes=settings.jwt_ttl_minutes,
+        algorithm=settings.jwt_algorithm,
+    )
     try:
-        token = await auth.login(payload.username, payload.password)
+        token = await command.execute()
     except InvalidCredentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"

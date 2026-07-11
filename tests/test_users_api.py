@@ -4,7 +4,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from capybara.api.dependencies import get_session
+from capybara.api.dependencies import get_session, get_sessionmaker
 from capybara.db.models import User
 from capybara.main import app
 
@@ -26,6 +26,7 @@ async def client(engine):  # type: ignore[no-untyped-def]
                 raise
 
     app.dependency_overrides[get_session] = _override_session
+    app.dependency_overrides[get_sessionmaker] = lambda: maker
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

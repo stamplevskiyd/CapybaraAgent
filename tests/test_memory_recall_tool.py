@@ -1,5 +1,5 @@
+from capybara.agent.deep_tools import format_facts
 from capybara.db.models import Fact
-from capybara.services.memory_tools import format_facts
 
 
 def test_format_facts_wraps_recalled_content_as_untrusted() -> None:

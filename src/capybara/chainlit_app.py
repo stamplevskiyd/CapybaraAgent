@@ -1,7 +1,7 @@
 """Chainlit callbacks for CapybaraAgent chat runtime."""
 
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from uuid import UUID
 
 import chainlit as cl
@@ -14,9 +14,12 @@ from starlette.datastructures import Headers
 
 from capybara.agent.deep_runtime import DeepAgentRunner
 from capybara.config import Settings, get_settings
+from capybara.db.models import ChatPref
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
-from capybara.services.chat_pref_service import ChatPrefService
+
+#: Look up a thread's saved prefs for a user (wired to the GetChatPref command).
+PrefLookup = Callable[[UUID, UUID], Awaitable[ChatPref | None]]
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,7 @@ _runtime_runner: DeepAgentRunner | None = None
 _default_model = "llama3.1"
 _settings: Settings | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
-_chat_pref_service: ChatPrefService | None = None
+_pref_lookup: PrefLookup | None = None
 
 
 def configure_chainlit_runtime(
@@ -56,20 +59,20 @@ def configure_chainlit_runtime(
     default_model: str,
     settings: Settings | None = None,
     sessionmaker: async_sessionmaker[AsyncSession] | None = None,
-    chat_pref_service: ChatPrefService | None = None,
+    pref_lookup: PrefLookup | None = None,
 ) -> None:
     """Configure process-level runtime dependencies for Chainlit callbacks.
 
     *settings* and *sessionmaker* back the header-auth callback; without them auth resolves
-    to no user (and per-user tools stay empty). *chat_pref_service* resolves each thread's
-    saved model; without it every turn uses *default_model*.
+    to no user (and per-user tools stay empty). *pref_lookup* resolves each thread's saved
+    model; without it every turn uses *default_model*.
     """
-    global _default_model, _runtime_runner, _settings, _sessionmaker, _chat_pref_service
+    global _default_model, _runtime_runner, _settings, _sessionmaker, _pref_lookup
     _runtime_runner = runner
     _default_model = default_model
     _settings = settings
     _sessionmaker = sessionmaker
-    _chat_pref_service = chat_pref_service
+    _pref_lookup = pref_lookup
 
 
 async def resolve_user(
@@ -180,9 +183,9 @@ async def selected_model(metadata: dict[str, object] | None, thread_id: str) -> 
     if isinstance(candidate, str) and candidate:
         return candidate
     user_id = current_user_id()
-    if _chat_pref_service is not None and user_id is not None:
+    if _pref_lookup is not None and user_id is not None:
         try:
-            pref = await _chat_pref_service.get_pref(user_id, UUID(thread_id))
+            pref = await _pref_lookup(user_id, UUID(thread_id))
         except ValueError:  # non-UUID thread id — nothing saved for it by definition
             pref = None
         if pref is not None and pref.model:

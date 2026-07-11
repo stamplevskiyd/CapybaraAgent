@@ -3,20 +3,22 @@
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 from chainlit.utils import mount_chainlit
 from fastapi import FastAPI
 from langgraph.checkpoint.memory import InMemorySaver
 
-from capybara.agent.deep_runtime import DeepAgentRunner, build_graph
+from capybara.agent.deep_runtime import DeepAgentRunner, McpServerSpec, build_graph
 from capybara.agent.deep_tools import CompositeToolProvider, McpToolProvider, MemoryToolProvider
 from capybara.agent.model_registry import ModelRegistry
 from capybara.chainlit_app import configure_chainlit_runtime, current_user_id
+from capybara.commands.chat_pref.get import GetChatPref
+from capybara.commands.fact.recall import RecallFacts
+from capybara.commands.mcp.tool_specs import ListEnabledToolSpecs
 from capybara.config import get_settings
 from capybara.db.engine import create_engine, create_sessionmaker
-from capybara.services.chat_pref_service import ChatPrefService
-from capybara.services.mcp_service import McpService
-from capybara.services.memory_service import MemoryService
+from capybara.db.models import ChatPref, Fact
 
 #: Where the Chainlit runtime is mounted and the module defining its callbacks.
 CHAINLIT_PATH = "/chainlit"
@@ -34,16 +36,26 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.sessionmaker = sessionmaker
     model_registry = ModelRegistry(settings)
     app.state.model_registry = model_registry
-    # App-wide services (each owns short-lived sessions) back the per-user tools.
-    memory_service = MemoryService(sessionmaker, model_registry, settings)
-    app.state.memory_service = memory_service
-    mcp_service = McpService(sessionmaker)
-    app.state.mcp_service = mcp_service
-    # Build the agent graph per turn so the selected model and the current user's memory/MCP
-    # tools can be injected; the user is resolved from the authenticated Chainlit session.
+
+    # Per-turn command adapters: the agent layer depends on these narrow callables,
+    # not on the command classes.
+    async def recall(user_id: UUID, query: str) -> list[Fact]:
+        return await RecallFacts(
+            sessionmaker, model_registry, settings, user_id=user_id, query=query
+        ).execute()
+
+    async def mcp_specs(user_id: UUID) -> list[McpServerSpec]:
+        return await ListEnabledToolSpecs(sessionmaker, user_id=user_id).execute()
+
+    async def pref_lookup(user_id: UUID, thread_id: UUID) -> ChatPref | None:
+        return await GetChatPref(sessionmaker, user_id=user_id, thread_id=thread_id).execute()
+
+    # Build the agent graph per turn so the selected model and the current user's
+    # memory/MCP tools can be injected; the user is resolved from the authenticated
+    # Chainlit session.
     tool_provider = CompositeToolProvider(
-        MemoryToolProvider(memory_service, get_user_id=current_user_id),
-        McpToolProvider(mcp_service, get_user_id=current_user_id),
+        MemoryToolProvider(recall, get_user_id=current_user_id),
+        McpToolProvider(mcp_specs, get_user_id=current_user_id),
     )
     # One process-wide checkpointer carries conversation state across per-turn graph
     # rebuilds (keyed by thread_id). In-memory for now: history for the model resets on
@@ -60,7 +72,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         default_model=settings.default_model,
         settings=settings,
         sessionmaker=sessionmaker,
-        chat_pref_service=ChatPrefService(sessionmaker),
+        pref_lookup=pref_lookup,
     )
     try:
         yield

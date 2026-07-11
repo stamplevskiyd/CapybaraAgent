@@ -1,14 +1,17 @@
-"""Router for memory (facts) CRUD and settings."""
+"""Router for memory (facts) CRUD."""
 
-from typing import Annotated, NoReturn
+from typing import NoReturn
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from capybara.agent.errors import EmbeddingModelUnavailableError, ModelProviderError
-from capybara.api.dependencies import get_current_user, get_memory_service, get_owned_fact
+from capybara.api.dependencies import CurrentUser, Registry, Sessionmaker
 from capybara.api.schemas import FactCreate, FactOut, FactUpdate
-from capybara.db.models import Fact, User
-from capybara.services.memory_service import MemoryService
+from capybara.commands.fact.create import CreateFact
+from capybara.commands.fact.delete import DeleteFact
+from capybara.commands.fact.list import ListFacts
+from capybara.commands.fact.update import UpdateFact
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -27,24 +30,29 @@ def _raise_for_embed_error(exc: EmbeddingModelUnavailableError | ModelProviderEr
 
 
 @router.get("/facts", response_model=list[FactOut])
-async def list_facts(
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[MemoryService, Depends(get_memory_service)],
-) -> list[FactOut]:
+async def list_facts(user: CurrentUser, sessionmaker: Sessionmaker) -> list[FactOut]:
     """Return the current user's facts, newest first."""
-    rows = await service.list_facts(user.id)
+    rows = await ListFacts(sessionmaker, user_id=user.id).execute()
     return [FactOut.model_validate(f) for f in rows]
 
 
 @router.post("/facts", status_code=status.HTTP_201_CREATED, response_model=FactOut)
 async def create_fact(
     payload: FactCreate,
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[MemoryService, Depends(get_memory_service)],
+    user: CurrentUser,
+    sessionmaker: Sessionmaker,
+    registry: Registry,
 ) -> FactOut:
     """Embed and store a new manual fact for the current user."""
+    command = CreateFact(
+        sessionmaker,
+        registry,
+        user_id=user.id,
+        content=payload.content,
+        category=payload.category,
+    )
     try:
-        fact = await service.add_fact(user.id, payload.content, payload.category)
+        fact = await command.execute()
     except (EmbeddingModelUnavailableError, ModelProviderError) as exc:
         _raise_for_embed_error(exc)
     return FactOut.model_validate(fact)
@@ -52,30 +60,29 @@ async def create_fact(
 
 @router.patch("/facts/{fact_id}", response_model=FactOut)
 async def update_fact(
+    fact_id: UUID,
     payload: FactUpdate,
-    fact: Annotated[Fact, Depends(get_owned_fact)],
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[MemoryService, Depends(get_memory_service)],
+    user: CurrentUser,
+    sessionmaker: Sessionmaker,
+    registry: Registry,
 ) -> FactOut:
-    """Update a fact's content and/or category (404 if not owned); re-embeds on content change."""
+    """Update a fact's content and/or category (404 if not owned); re-embeds new content."""
+    command = UpdateFact(sessionmaker, registry, user_id=user.id, fact_id=fact_id, patch=payload)
     try:
-        updated = await service.update_fact(
-            user.id, fact.id, content=payload.content, category=payload.category
-        )
+        updated = await command.execute()
     except (EmbeddingModelUnavailableError, ModelProviderError) as exc:
         _raise_for_embed_error(exc)
     if updated is None:
-        # The fact vanished between the ownership check and the service's own re-read
-        # (e.g. a concurrent delete) — surface the same 404 as get_owned_fact would.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fact not found")
     return FactOut.model_validate(updated)
 
 
 @router.delete("/facts/{fact_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_fact(
-    fact: Annotated[Fact, Depends(get_owned_fact)],
-    user: Annotated[User, Depends(get_current_user)],
-    service: Annotated[MemoryService, Depends(get_memory_service)],
+    fact_id: UUID,
+    user: CurrentUser,
+    sessionmaker: Sessionmaker,
 ) -> None:
     """Delete a fact owned by the current user (404 if not owned)."""
-    await service.delete_fact(user.id, fact.id)
+    if not await DeleteFact(sessionmaker, user_id=user.id, fact_id=fact_id).execute():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fact not found")

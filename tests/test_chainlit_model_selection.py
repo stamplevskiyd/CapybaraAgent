@@ -12,12 +12,12 @@ class FakePref:
         self.model = model
 
 
-class FakePrefService:
+class FakePrefLookup:
     def __init__(self, pref: FakePref | None) -> None:
         self.pref = pref
         self.calls: list[tuple[UUID, UUID]] = []
 
-    async def get_pref(self, user_id: UUID, thread_id: UUID) -> FakePref | None:
+    async def __call__(self, user_id: UUID, thread_id: UUID) -> FakePref | None:
         self.calls.append((user_id, thread_id))
         return self.pref
 
@@ -29,22 +29,22 @@ def configured(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     monkeypatch.setattr(chainlit_app, "_default_model", "default-model")
     monkeypatch.setattr(chainlit_app, "current_user_id", lambda: user_id)
 
-    def set_service(service: FakePrefService | None) -> UUID:
-        monkeypatch.setattr(chainlit_app, "_chat_pref_service", service)
+    def set_lookup(lookup: FakePrefLookup | None) -> UUID:
+        monkeypatch.setattr(chainlit_app, "_pref_lookup", lookup)
         return user_id
 
-    return set_service
+    return set_lookup
 
 
 async def test_message_metadata_model_wins(configured) -> None:  # type: ignore[no-untyped-def]
     """A model sent with the message itself beats prefs and default."""
-    configured(FakePrefService(FakePref("pref-model")))
+    configured(FakePrefLookup(FakePref("pref-model")))
     model = await chainlit_app.selected_model({"model": "meta-model"}, str(uuid4()))
     assert model == "meta-model"
 
 
 async def test_thread_pref_model_used_when_no_metadata(configured) -> None:  # type: ignore[no-untyped-def]
-    service = FakePrefService(FakePref("pref-model"))
+    service = FakePrefLookup(FakePref("pref-model"))
     user_id = configured(service)
     thread_id = uuid4()
 
@@ -55,17 +55,17 @@ async def test_thread_pref_model_used_when_no_metadata(configured) -> None:  # t
 
 
 async def test_falls_back_to_default_without_pref(configured) -> None:  # type: ignore[no-untyped-def]
-    configured(FakePrefService(None))
+    configured(FakePrefLookup(None))
     assert await chainlit_app.selected_model({}, str(uuid4())) == "default-model"
 
 
 async def test_falls_back_to_default_when_pref_has_no_model(configured) -> None:  # type: ignore[no-untyped-def]
-    configured(FakePrefService(FakePref(None)))
+    configured(FakePrefLookup(FakePref(None)))
     assert await chainlit_app.selected_model(None, str(uuid4())) == "default-model"
 
 
 async def test_falls_back_to_default_for_non_uuid_thread_id(configured) -> None:  # type: ignore[no-untyped-def]
-    service = FakePrefService(FakePref("pref-model"))
+    service = FakePrefLookup(FakePref("pref-model"))
     configured(service)
 
     assert await chainlit_app.selected_model(None, "not-a-uuid") == "default-model"
@@ -75,6 +75,6 @@ async def test_falls_back_to_default_for_non_uuid_thread_id(configured) -> None:
 async def test_falls_back_to_default_when_unauthenticated(
     configured, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # type: ignore[no-untyped-def]
-    configured(FakePrefService(FakePref("pref-model")))
+    configured(FakePrefLookup(FakePref("pref-model")))
     monkeypatch.setattr(chainlit_app, "current_user_id", lambda: None)
     assert await chainlit_app.selected_model(None, str(uuid4())) == "default-model"

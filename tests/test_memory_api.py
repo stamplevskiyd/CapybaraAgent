@@ -146,7 +146,7 @@ async def test_facts_are_per_user_isolated(
         )
         await s.commit()
         async with maker() as s2:
-            other_fact = (await FactRepo(s2).list())[0]
+            other_fact = (await FactRepo(s2).get_list())[0]
             other_fact_id = other_fact.id
 
     # Current user cannot see it, and cannot mutate it (404, not 403 leak).
@@ -156,24 +156,25 @@ async def test_facts_are_per_user_isolated(
     assert (await client.delete(f"/memory/facts/{other_fact_id}")).status_code == 404
 
 
-async def test_update_fact_lost_race_returns_404(client: AsyncClient) -> None:
-    """PATCH surfaces 404 when the fact vanishes between the ownership check and the update.
+async def test_update_fact_lost_race_returns_404(
+    client: AsyncClient,
+    monkeypatch,  # type: ignore[no-untyped-def]
+) -> None:
+    """PATCH surfaces 404 when the fact vanishes before the command's own read.
 
-    get_owned_fact reads on the request session while the service re-reads on its own
-    sessions; a concurrent delete in that window makes update_fact return None. That
-    must map to the same 404 as a missing fact — not an assert that becomes a 500.
+    A concurrent delete makes UpdateFact return None; that must map to the same 404 as
+    a missing fact — not a 500.
     """
-    from capybara.api.dependencies import get_memory_service
+    from capybara.commands.fact.update import UpdateFact
 
     created = await client.post(
         "/memory/facts", json={"content": "Любит чай", "category": "preference"}
     )
     fact_id = created.json()["id"]
 
-    class VanishedFactService:
-        async def update_fact(self, user_id, fact_id, *, content=None, category=None):  # type: ignore[no-untyped-def]
-            return None  # the fact was deleted between the route check and this call
+    async def vanished(self):  # type: ignore[no-untyped-def]
+        return None  # the fact was deleted before the command could re-read it
 
-    app.dependency_overrides[get_memory_service] = lambda: VanishedFactService()
+    monkeypatch.setattr(UpdateFact, "execute", vanished)
     resp = await client.patch(f"/memory/facts/{fact_id}", json={"content": "Новое"})
     assert resp.status_code == 404
