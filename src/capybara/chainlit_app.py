@@ -8,6 +8,7 @@ import chainlit as cl
 import jwt
 from chainlit.data.base import BaseDataLayer
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+from chainlit.types import ThreadDict
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.datastructures import Headers
 
@@ -15,6 +16,7 @@ from capybara.agent.deep_runtime import DeepAgentRunner
 from capybara.config import Settings, get_settings
 from capybara.repositories.user_repo import UserRepo
 from capybara.security.tokens import decode_access_token
+from capybara.services.chat_pref_service import ChatPrefService
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ _runtime_runner: DeepAgentRunner | None = None
 _default_model = "llama3.1"
 _settings: Settings | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
+_chat_pref_service: ChatPrefService | None = None
 
 
 def configure_chainlit_runtime(
@@ -53,17 +56,20 @@ def configure_chainlit_runtime(
     default_model: str,
     settings: Settings | None = None,
     sessionmaker: async_sessionmaker[AsyncSession] | None = None,
+    chat_pref_service: ChatPrefService | None = None,
 ) -> None:
     """Configure process-level runtime dependencies for Chainlit callbacks.
 
     *settings* and *sessionmaker* back the header-auth callback; without them auth resolves
-    to no user (and per-user tools stay empty).
+    to no user (and per-user tools stay empty). *chat_pref_service* resolves each thread's
+    saved model; without it every turn uses *default_model*.
     """
-    global _default_model, _runtime_runner, _settings, _sessionmaker
+    global _default_model, _runtime_runner, _settings, _sessionmaker, _chat_pref_service
     _runtime_runner = runner
     _default_model = default_model
     _settings = settings
     _sessionmaker = sessionmaker
+    _chat_pref_service = chat_pref_service
 
 
 async def resolve_user(
@@ -163,10 +169,35 @@ async def stream_agent_message(
     await response.send()  # type: ignore[no-untyped-call]  # Chainlit's API is untyped
 
 
-@cl.on_chat_start
-async def on_chat_start() -> None:
-    """Initialize a Chainlit chat session with the default model."""
-    cl.user_session.set("model", _default_model)  # type: ignore[no-untyped-call]
+async def selected_model(metadata: dict[str, object] | None, thread_id: str) -> str:
+    """Resolve the model for one turn.
+
+    Precedence: the model the client sent with this very message (the only channel that
+    exists before a brand-new thread has prefs), then the thread's saved pref, then the
+    configured default.
+    """
+    candidate = (metadata or {}).get("model")
+    if isinstance(candidate, str) and candidate:
+        return candidate
+    user_id = current_user_id()
+    if _chat_pref_service is not None and user_id is not None:
+        try:
+            pref = await _chat_pref_service.get_pref(user_id, UUID(thread_id))
+        except ValueError:  # non-UUID thread id — nothing saved for it by definition
+            pref = None
+        if pref is not None and pref.model:
+            return pref.model
+    return _default_model
+
+
+@cl.on_chat_resume
+async def on_chat_resume(thread: ThreadDict) -> None:
+    """Accept resuming a persisted thread.
+
+    The visible transcript is restored by the data layer; the agent's own context lives in
+    the checkpointer keyed by this thread's id, so the conversation continues where it
+    left off (within one process for the in-memory checkpointer).
+    """
 
 
 @cl.on_message
@@ -174,13 +205,16 @@ async def on_message(message: cl.Message) -> None:
     """Run one message through DeepAgents and stream it through Chainlit."""
     if _runtime_runner is None:
         raise RuntimeError("DeepAgentRunner is not configured")
-    model = cl.user_session.get("model", _default_model)  # type: ignore[no-untyped-call]
+    # The session's thread id (not the session id): stable across reconnects and equal to
+    # the id the client uses for the thread's prefs and history.
+    thread_id = cl.context.session.thread_id
+    model = await selected_model(message.metadata, thread_id)
     try:
         await stream_agent_message(
             runner=_runtime_runner,
             content=message.content,
-            model=str(model),
-            thread_id=cl.context.session.id,
+            model=model,
+            thread_id=thread_id,
             response=cl.Message(content=""),
         )
     except Exception:

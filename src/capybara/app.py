@@ -14,6 +14,7 @@ from capybara.agent.model_registry import ModelRegistry
 from capybara.chainlit_app import configure_chainlit_runtime, current_user_id
 from capybara.config import get_settings
 from capybara.db.engine import create_engine, create_sessionmaker
+from capybara.services.chat_pref_service import ChatPrefService
 from capybara.services.mcp_service import McpService
 from capybara.services.memory_service import MemoryService
 
@@ -59,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         default_model=settings.default_model,
         settings=settings,
         sessionmaker=sessionmaker,
+        chat_pref_service=ChatPrefService(sessionmaker),
     )
     try:
         yield

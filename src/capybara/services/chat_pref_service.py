@@ -24,6 +24,11 @@ class ChatPrefService:
         async with self._sessionmaker() as session:
             return await ChatPrefRepo(session).list(ChatPref.user_id == user_id)
 
+    async def get_pref(self, user_id: UUID, thread_id: UUID) -> ChatPref | None:
+        """Return the user's pref for one thread, or None if none is set."""
+        async with self._sessionmaker() as session:
+            return await ChatPrefRepo(session).get_for_thread(user_id, thread_id)
+
     async def upsert(
         self, user_id: UUID, thread_id: UUID, *, is_favorite: bool, model: str | None
     ) -> ChatPref:
