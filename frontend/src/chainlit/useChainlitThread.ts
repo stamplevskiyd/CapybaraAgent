@@ -5,14 +5,9 @@ import {
   useChatMessages,
   useChatSession,
 } from '@chainlit/react-client'
-import type { ChatMessage } from '../chat/messages'
 import { useAuth } from '../auth/AuthContext'
 import { chainlitClient } from './client'
-import { convertChainlitMessage } from './convertChainlitMessage'
-
-function isChatMessage(message: ChatMessage | null): message is ChatMessage {
-  return message !== null
-}
+import { convertChainlitMessages } from './convertChainlitMessage'
 
 export function useChainlitThread() {
   const { messages: chainlitMessages, threadId } = useChatMessages()
@@ -46,10 +41,7 @@ export function useChainlitThread() {
     }
   }, [connect, disconnect, session, token])
 
-  const messages = useMemo(
-    () => chainlitMessages.map(convertChainlitMessage).filter(isChatMessage),
-    [chainlitMessages],
-  )
+  const messages = useMemo(() => convertChainlitMessages(chainlitMessages), [chainlitMessages])
 
   const send = useCallback(
     async (content: string, model?: string | null) => {
