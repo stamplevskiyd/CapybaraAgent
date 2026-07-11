@@ -10,6 +10,7 @@ export interface TokenResponse {
   token_type: string
 }
 
+/** Sidebar chat entry: a Chainlit thread merged with its per-thread prefs. */
 export interface ChatOut {
   id: string
   title: string
@@ -19,35 +20,17 @@ export interface ChatOut {
   updated_at: string
 }
 
+/** Per-thread preferences stored by Capybara (Chainlit has no concept of these). */
+export interface ChatPrefOut {
+  thread_id: string
+  is_favorite: boolean
+  model: string | null
+}
+
 export interface ModelsOut {
   provider: string
   models: string[]
 }
-
-export interface ToolCallOut {
-  id: string
-  name: string
-  args: Record<string, unknown>
-  result: string | null
-}
-
-export interface MemorySaveOut {
-  content: string
-  category: string
-}
-
-export interface MessageOut {
-  id: string
-  role: string
-  content: string
-  model: string | null
-  incomplete: boolean
-  created_at: string
-  tool_calls?: ToolCallOut[] | null
-  memory_saves?: MemorySaveOut[] | null
-}
-
-export type ChatDetailOut = ChatOut & { messages: MessageOut[] }
 
 export type Category = 'personal' | 'project' | 'preference'
 
@@ -68,10 +51,6 @@ export interface FactCreate {
 export interface FactUpdate {
   content?: string
   category?: Category
-}
-
-export interface MemorySettings {
-  auto_capture: boolean
 }
 
 export interface McpToolOut {

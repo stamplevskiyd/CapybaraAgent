@@ -29,7 +29,6 @@ test('renders facts and adds a new one', async () => {
   const created = { ...fact, id: '2', content: 'Пьёт кофе по утрам', category: 'preference' }
   server.use(
     http.get('/api/memory/facts', () => HttpResponse.json([fact])),
-    http.get('/api/memory/settings', () => HttpResponse.json({ auto_capture: true })),
     http.post('/api/memory/facts', () => HttpResponse.json(created, { status: 201 })),
   )
   renderScreen()
@@ -46,27 +45,10 @@ test('renders facts and adds a new one', async () => {
 test('deletes a fact', async () => {
   server.use(
     http.get('/api/memory/facts', () => HttpResponse.json([fact])),
-    http.get('/api/memory/settings', () => HttpResponse.json({ auto_capture: true })),
     http.delete('/api/memory/facts/1', () => new HttpResponse(null, { status: 204 })),
   )
   renderScreen()
   expect(await screen.findByText('Любит чай')).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Удалить' }))
   await waitFor(() => expect(screen.queryByText('Любит чай')).not.toBeInTheDocument())
-})
-
-test('toggles auto-capture', async () => {
-  let patched: unknown = null
-  server.use(
-    http.get('/api/memory/facts', () => HttpResponse.json([])),
-    http.get('/api/memory/settings', () => HttpResponse.json({ auto_capture: true })),
-    http.patch('/api/memory/settings', async ({ request }) => {
-      patched = await request.json()
-      return HttpResponse.json({ auto_capture: false })
-    }),
-  )
-  renderScreen()
-  const toggle = await screen.findByLabelText('Авто-запоминание')
-  await userEvent.click(toggle)
-  await waitFor(() => expect(patched).toEqual({ auto_capture: false }))
 })

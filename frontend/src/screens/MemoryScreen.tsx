@@ -1,4 +1,4 @@
-/** Standalone «Память» screen: auto-capture toggle + fact-card grid with add/edit/delete. */
+/** Standalone «Память» screen: fact-card grid with add/edit/delete. */
 import { useState } from 'react'
 
 /** Russian plural for "факт": 1 → факт, 2–4 → факта, else → фактов (with teens exception). */
@@ -17,7 +17,7 @@ import type { Category } from '../api/types'
 import styles from './MemoryScreen.module.css'
 
 export function MemoryScreen() {
-  const { facts, autoCapture, addFact, editFact, removeFact, toggleAutoCapture } = useFacts()
+  const { facts, addFact, editFact, removeFact } = useFacts()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
 
@@ -41,15 +41,6 @@ export function MemoryScreen() {
               Агент запомнил {facts.length} {pluralizeFacts(facts.length)} о вас и вашей работе.
             </p>
           </div>
-          <label className={styles.toggleLabel}>
-            Авто-запоминание
-            <input
-              type="checkbox"
-              className={styles.toggle}
-              checked={autoCapture}
-              onChange={(e) => void toggleAutoCapture(e.target.checked)}
-            />
-          </label>
         </div>
 
         <div className={styles.grid}>

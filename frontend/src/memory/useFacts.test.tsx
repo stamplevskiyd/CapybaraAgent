@@ -20,21 +20,16 @@ const fact = {
   updated_at: '2026-07-05T10:00:00Z',
 }
 
-test('loads facts and settings on mount', async () => {
-  server.use(
-    http.get('/api/memory/facts', () => HttpResponse.json([fact])),
-    http.get('/api/memory/settings', () => HttpResponse.json({ auto_capture: true })),
-  )
+test('loads facts on mount', async () => {
+  server.use(http.get('/api/memory/facts', () => HttpResponse.json([fact])))
   const { result } = renderHook(() => useFacts(), { wrapper })
   await waitFor(() => expect(result.current.loading).toBe(false))
   expect(result.current.facts[0].content).toBe('Любит чай')
-  expect(result.current.autoCapture).toBe(true)
 })
 
 test('optimistically edits a fact and rolls back on failure', async () => {
   server.use(
     http.get('/api/memory/facts', () => HttpResponse.json([fact])),
-    http.get('/api/memory/settings', () => HttpResponse.json({ auto_capture: true })),
     http.patch('/api/memory/facts/1', () => new HttpResponse(null, { status: 500 })),
   )
   const { result } = renderHook(() => useFacts(), { wrapper })

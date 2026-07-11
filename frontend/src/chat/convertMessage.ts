@@ -1,7 +1,7 @@
 /** Translate our ChatMessage into assistant-ui's parts-based ThreadMessageLike. */
 import type { ThreadMessageLike } from '@assistant-ui/react'
 import type { ReadonlyJSONObject } from 'assistant-stream/utils'
-import type { ChatMessage } from './useChatStream'
+import type { ChatMessage } from './messages'
 
 export function convertMessage(m: ChatMessage): ThreadMessageLike {
   const toolParts = (m.toolCalls ?? []).map((t) => ({
@@ -21,6 +21,5 @@ export function convertMessage(m: ChatMessage): ThreadMessageLike {
     // assistant-ui reports hasContent=false and the typing indicator can show.
     content: [...toolParts, ...textParts],
     status: m.streaming ? { type: 'running' } : undefined,
-    metadata: { custom: { memorySaves: m.memorySaves ?? [] } },
   }
 }

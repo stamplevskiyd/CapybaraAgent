@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useApiClient } from '../auth/AuthContext'
-import { listModels } from './chatApi'
+import type { ModelsOut } from '../api/types'
 
 /** Fetch the provider's available model names once, with a manual reload. */
 export function useModels() {
@@ -9,7 +9,7 @@ export function useModels() {
 
   const reloadModels = useCallback(async () => {
     try {
-      const out = await listModels(api)
+      const out = await api.get<ModelsOut>('/models')
       setModels(out.models)
     } catch {
       setModels([])

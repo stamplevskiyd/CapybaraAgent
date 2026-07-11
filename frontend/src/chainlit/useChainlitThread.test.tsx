@@ -8,6 +8,8 @@ const chainlitHooks = vi.hoisted(() => ({
   disconnect: vi.fn(),
   sendMessage: vi.fn(),
   stopTask: vi.fn(),
+  clear: vi.fn(),
+  setIdToResume: vi.fn(),
   useChatData: vi.fn(),
   useChatInteract: vi.fn(),
   useChatMessages: vi.fn(),
@@ -37,15 +39,19 @@ describe('useChainlitThread', () => {
     chainlitHooks.disconnect.mockReset()
     chainlitHooks.sendMessage.mockReset()
     chainlitHooks.stopTask.mockReset()
+    chainlitHooks.clear.mockReset()
+    chainlitHooks.setIdToResume.mockReset()
     chainlitHooks.fetch.mockReset()
     chainlitHooks.fetch.mockResolvedValue({ json: async () => ({}) })
     chainlitHooks.token.value = null
-    chainlitHooks.useChatData.mockReturnValue({ loading: false })
+    chainlitHooks.useChatData.mockReturnValue({ loading: false, connected: true })
     chainlitHooks.useChatInteract.mockReturnValue({
       sendMessage: chainlitHooks.sendMessage,
       stopTask: chainlitHooks.stopTask,
+      clear: chainlitHooks.clear,
+      setIdToResume: chainlitHooks.setIdToResume,
     })
-    chainlitHooks.useChatMessages.mockReturnValue({ messages: [] })
+    chainlitHooks.useChatMessages.mockReturnValue({ messages: [], threadId: undefined })
     chainlitHooks.useChatSession.mockReturnValue({
       connect: chainlitHooks.connect,
       disconnect: chainlitHooks.disconnect,
@@ -103,7 +109,7 @@ describe('useChainlitThread', () => {
         createdAt: '2026-07-08T00:00:00Z',
       },
     ]
-    chainlitHooks.useChatMessages.mockReturnValue({ messages })
+    chainlitHooks.useChatMessages.mockReturnValue({ messages, threadId: 't1' })
 
     const { result } = renderHook(() => useChainlitThread())
 
@@ -130,6 +136,44 @@ describe('useChainlitThread', () => {
       name: 'user',
       type: 'user_message',
       output: 'Hello Chainlit',
+      metadata: undefined,
     })
+  })
+
+  test('rides the selected model in the message metadata', async () => {
+    const { result } = renderHook(() => useChainlitThread())
+
+    await act(async () => {
+      await result.current.send('Hello', 'llama3.1:8b')
+    })
+
+    expect(chainlitHooks.sendMessage).toHaveBeenCalledWith({
+      name: 'user',
+      type: 'user_message',
+      output: 'Hello',
+      metadata: { model: 'llama3.1:8b' },
+    })
+  })
+
+  test('openThread resets the session and marks the thread for resume', () => {
+    const { result } = renderHook(() => useChainlitThread())
+
+    act(() => result.current.openThread('t9'))
+
+    expect(chainlitHooks.clear).toHaveBeenCalledOnce()
+    expect(chainlitHooks.setIdToResume).toHaveBeenCalledWith('t9')
+    // clear() must run first: it resets idToResume as part of the session reset.
+    expect(chainlitHooks.clear.mock.invocationCallOrder[0]).toBeLessThan(
+      chainlitHooks.setIdToResume.mock.invocationCallOrder[0],
+    )
+  })
+
+  test('newThread resets the session without a resume id', () => {
+    const { result } = renderHook(() => useChainlitThread())
+
+    act(() => result.current.newThread())
+
+    expect(chainlitHooks.clear).toHaveBeenCalledOnce()
+    expect(chainlitHooks.setIdToResume).not.toHaveBeenCalled()
   })
 })

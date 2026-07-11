@@ -1,7 +1,7 @@
 /** Bridge our chat store to assistant-ui via ExternalStoreRuntime. */
 import { useExternalStoreRuntime, type AppendMessage } from '@assistant-ui/react'
 import { convertMessage } from './convertMessage'
-import type { ChatMessage } from './useChatStream'
+import type { ChatMessage } from './messages'
 
 /**
  * Extract the plain text from the first text part of an AppendMessage.

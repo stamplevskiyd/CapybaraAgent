@@ -5,7 +5,7 @@ import {
   useChatMessages,
   useChatSession,
 } from '@chainlit/react-client'
-import type { ChatMessage } from '../chat/useChatStream'
+import type { ChatMessage } from '../chat/messages'
 import { useAuth } from '../auth/AuthContext'
 import { chainlitClient } from './client'
 import { convertChainlitMessage } from './convertChainlitMessage'
@@ -15,9 +15,9 @@ function isChatMessage(message: ChatMessage | null): message is ChatMessage {
 }
 
 export function useChainlitThread() {
-  const { messages: chainlitMessages } = useChatMessages()
-  const { loading } = useChatData()
-  const { sendMessage, stopTask } = useChatInteract()
+  const { messages: chainlitMessages, threadId } = useChatMessages()
+  const { loading, connected } = useChatData()
+  const { sendMessage, stopTask, clear, setIdToResume } = useChatInteract()
   const { connect, disconnect, session } = useChatSession()
   const { token } = useAuth()
 
@@ -52,30 +52,44 @@ export function useChainlitThread() {
   )
 
   const send = useCallback(
-    async (content: string, _chatIdOverride?: string) => {
-      void _chatIdOverride
+    async (content: string, model?: string | null) => {
       sendMessage({
         name: 'user',
         type: 'user_message',
         output: content,
+        // The backend reads the turn's model from here — the only channel that exists
+        // before a brand-new thread has saved prefs.
+        metadata: model ? { model } : undefined,
       })
     },
     [sendMessage],
   )
 
-  const loadHistory = useCallback(async () => {}, [])
-  const regenerate = useCallback(async () => {}, [])
+  /** Switch to a persisted thread: reset the session, then reconnect resuming *id*. */
+  const openThread = useCallback(
+    (id: string) => {
+      clear()
+      setIdToResume(id)
+    },
+    [clear, setIdToResume],
+  )
+
+  /** Start a fresh thread: reset the session; the server assigns a new thread id. */
+  const newThread = useCallback(() => {
+    clear()
+  }, [clear])
 
   return useMemo(
     () => ({
       messages,
+      threadId,
+      connected: Boolean(connected),
       sending: loading,
-      loadingHistory: false,
       send,
-      loadHistory,
+      openThread,
+      newThread,
       cancel: stopTask,
-      regenerate,
     }),
-    [loadHistory, loading, messages, regenerate, send, stopTask],
+    [connected, loading, messages, newThread, openThread, send, stopTask, threadId],
   )
 }

@@ -1,5 +1,5 @@
 import type { IStep } from '@chainlit/react-client'
-import type { ChatMessage, ToolCallState } from '../chat/useChatStream'
+import type { ChatMessage, ToolCallState } from '../chat/messages'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

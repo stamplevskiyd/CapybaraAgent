@@ -1,5 +1,5 @@
-/** Chat screen: welcome empty-state when no chat is active, or active thread with streaming. */
-import { useEffect, useRef, useState } from 'react'
+/** Chat screen: welcome empty-state when no thread is active, or the active thread. */
+import { useEffect, useState } from 'react'
 import { PanelLeft } from 'lucide-react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { CapyLogo } from '../components/CapyLogo'
@@ -9,34 +9,28 @@ import { Sidebar } from '../components/Sidebar'
 import { MemoryScreen } from './MemoryScreen'
 import { McpScreen } from './McpScreen'
 import { useAuth, useApiClient } from '../auth/AuthContext'
-import { useChats } from '../chat/useChats'
+import { useThreads } from '../chat/useThreads'
 import { useModels } from '../chat/useModels'
 import { useChainlitThread } from '../chainlit/useChainlitThread'
 import { useChatRuntime } from '../chat/runtime'
-import { deleteChat, renameChat, setFavorite, patchChatModel } from '../chat/chatApi'
+import { chainlitClient } from '../chainlit/client'
+import { deleteChatPref, putChatPref } from '../chat/chatPrefs'
 import { loadLastModel, saveLastModel } from '../chat/lastModel'
 import styles from './ChatScreen.module.css'
 
 /**
  * Top-level chat layout: sidebar + main area.
  *
- * When `activeChatId` is null renders the welcome state (glyph, greeting, composer).
- * When set renders the active thread (header, Thread, loading indicator, composer).
- *
- * The whole screen is wrapped in `AssistantRuntimeProvider` so both the welcome
- * Composer and the active Thread share one runtime (send, cancel, reload all flow through it).
- *
- * Send flow for a new chat:
- *   1. `newChat()` creates the chat and returns its id.
- *   2. `setActiveChatId(id)` is called; `skipLoadHistory.current` is set to true.
- *   3. `send(text, id)` is called with the chatId override so no deferral is needed.
- *   4. `skipLoadHistory` prevents `loadHistory` from being called for the new chat
- *      (it has no server-side history yet; messages come from the live stream).
+ * Chainlit owns threads and messages. The sidebar lists persisted threads merged with
+ * per-thread prefs (favorite, model); selecting one resumes it over the socket; «new chat»
+ * resets the session and the server assigns a thread id with the first message, which
+ * `threadId` then reports back. Favorite and model changes persist to `/chat-prefs`;
+ * rename/delete go to Chainlit directly.
  */
 export function ChatScreen() {
   const { user } = useAuth()
   const api = useApiClient()
-  const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [draftModel, setDraftModel] = useState<string | null>(() => loadLastModel())
   const [view, setView] = useState<'chat' | 'memory' | 'mcp'>('chat')
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -46,8 +40,6 @@ export function ChatScreen() {
       return false
     }
   })
-  /** Set to true before updating activeChatId for a brand-new chat to skip history load. */
-  const skipLoadHistory = useRef(false)
 
   /** Toggle the sidebar open/shut and remember the choice across sessions. */
   function toggleSidebar() {
@@ -62,113 +54,124 @@ export function ChatScreen() {
     })
   }
 
-  const { chats, reload, newChat, patchLocal, removeLocal } = useChats()
+  const { chats, reload, patchLocal, removeLocal } = useThreads()
   const { models } = useModels()
-  const { messages, sending, loadingHistory, send, loadHistory, cancel, regenerate } =
+  const { messages, threadId, connected, sending, send, openThread, newThread, cancel } =
     useChainlitThread()
 
-  /**
-   * Load history whenever the active chat changes.
-   * Skipped for newly created chats (they are empty; messages come from the live stream).
-   */
+  // The initial thread fetch can race Chainlit's header auth; re-sync once connected.
   useEffect(() => {
-    if (skipLoadHistory.current) {
-      skipLoadHistory.current = false
-      return
-    }
-    void loadHistory()
-  }, [loadHistory])
+    if (connected) void reload()
+  }, [connected, reload])
 
-  const activeChat = chats.find((c) => c.id === activeChatId)
-  const selectedModel = activeChatId ? (activeChat?.model ?? null) : draftModel
+  // Adopt the server-assigned thread id once the first message of a fresh chat exists,
+  // and refresh the sidebar so the new thread appears in the list.
+  useEffect(() => {
+    if (activeThreadId === null && threadId && messages.length > 0) {
+      setActiveThreadId(threadId)
+      void reload()
+    }
+  }, [activeThreadId, threadId, messages.length, reload])
+
+  const activeChat = chats.find((c) => c.id === activeThreadId)
+  const selectedModel = activeChat?.model ?? draftModel
 
   /**
-   * Send a message.
-   * If no chat is active, creates one first and sends with the chatId override (no deferral).
-   * If a chat is already active, sends immediately.
+   * Send a message with the selected model riding in its metadata.
    * No-ops when no valid model is selected — guards the Enter path as well as the button.
    */
   async function handleSend(text: string) {
     const modelValid = selectedModel !== null && models.includes(selectedModel)
     if (!modelValid) return
-    if (activeChatId) {
-      // No reload: Chainlit streams the reply into the active thread state.
-      await send(text)
-      return
-    }
-    const chat = await newChat(draftModel ?? undefined)
-    setActiveChatId(chat.id)
-    skipLoadHistory.current = true
-    await send(text, chat.id)
+    await send(text, selectedModel)
   }
 
   const runtime = useChatRuntime({
     messages,
     isRunning: sending,
     onSend: handleSend,
-    onReload: regenerate,
+    onReload: async () => {},
     onCancel: cancel,
   })
 
   /**
-   * Toggle favorite: optimistic local flip, then persist. On failure the list is
-   * re-synced from the server so the UI never drifts from the persisted state.
+   * Toggle favorite: optimistic local flip, then persist to chat-prefs. On failure the
+   * list is re-synced from the server so the UI never drifts from the persisted state.
    */
   async function handleToggleFavorite(id: string) {
     const chat = chats.find((c) => c.id === id)
     const next = !(chat?.is_favorite ?? false)
     patchLocal(id, { is_favorite: next })
     try {
-      await setFavorite(api, id, next)
+      await putChatPref(api, id, { is_favorite: next, model: chat?.model ?? null })
     } catch {
       await reload()
     }
   }
 
-  /** Rename: optimistic local update, then persist; re-sync from the server on failure. */
+  /** Rename: optimistic local update, then persist to Chainlit; re-sync on failure. */
   async function handleRename(id: string, title: string) {
     patchLocal(id, { title })
     try {
-      await renameChat(api, id, title)
+      await chainlitClient.renameThread(id, title)
     } catch {
       await reload()
     }
   }
 
   /**
-   * Delete: remove locally (returning to welcome if it was active), then persist.
-   * On failure the still-existing chat is restored via a re-sync, and re-selected
-   * if it was the active one.
+   * Delete: remove locally (returning to welcome if it was active), then delete the
+   * Chainlit thread and its pref. On failure the list is re-synced from the server.
    */
   async function handleDelete(id: string) {
-    const wasActive = id === activeChatId
-    if (wasActive) setActiveChatId(null)
+    if (id === activeThreadId) {
+      setActiveThreadId(null)
+      newThread()
+    }
     removeLocal(id)
     try {
-      await deleteChat(api, id)
+      await chainlitClient.deleteThread(id)
+      // The pref is a soft reference; it being gone already is fine.
+      await deleteChatPref(api, id).catch(() => undefined)
     } catch {
       await reload()
-      if (wasActive) setActiveChatId(id)
     }
   }
 
   /**
-   * Update the selected model; persists to localStorage, updates draft, and PATCHes
-   * the active chat if open. A failed PATCH reverts the draft and re-syncs the chat.
+   * Update the selected model; persists to localStorage, updates the draft, and saves
+   * the active thread's pref if one is open. A failed save re-syncs from the server.
    */
   async function handleSelectModel(model: string) {
-    const prevDraft = draftModel
     saveLastModel(model)
     setDraftModel(model)
-    if (activeChatId) {
+    if (activeThreadId) {
+      const wasFavorite = activeChat?.is_favorite ?? false
+      patchLocal(activeThreadId, { model })
       try {
-        await patchChatModel(api, activeChatId, model)
-        await reload()
+        await putChatPref(api, activeThreadId, { is_favorite: wasFavorite, model })
       } catch {
-        setDraftModel(prevDraft)
         await reload()
       }
     }
+  }
+
+  /** Open a persisted thread: resume its session and show the chat view. */
+  function handleSelectThread(id: string) {
+    if (id !== activeThreadId) {
+      setActiveThreadId(id)
+      openThread(id)
+    }
+    setView('chat')
+  }
+
+  /** Start a fresh chat: reset the session and return to the welcome state. */
+  function handleNewChat() {
+    if (activeThreadId !== null) {
+      setActiveThreadId(null)
+      newThread()
+    }
+    setView('chat')
   }
 
   return (
@@ -176,17 +179,11 @@ export function ChatScreen() {
       <div className={styles.screen}>
         <Sidebar
           chats={chats}
-          activeChatId={activeChatId}
+          activeChatId={activeThreadId}
           collapsed={sidebarCollapsed}
           onToggleCollapse={toggleSidebar}
-          onSelect={(id) => {
-            setActiveChatId(id)
-            setView('chat')
-          }}
-          onNewChat={() => {
-            setActiveChatId(null)
-            setView('chat')
-          }}
+          onSelect={handleSelectThread}
+          onNewChat={handleNewChat}
           onToggleFavorite={handleToggleFavorite}
           onRename={handleRename}
           onDelete={handleDelete}
@@ -210,7 +207,7 @@ export function ChatScreen() {
             <MemoryScreen />
           ) : view === 'mcp' ? (
             <McpScreen />
-          ) : activeChatId === null ? (
+          ) : activeThreadId === null && messages.length === 0 ? (
             <div className={styles.welcome}>
               <div className={styles.welcomeContent}>
                 <CapyLogo size={64} />
@@ -234,13 +231,7 @@ export function ChatScreen() {
               >
                 <span className={styles.chatTitle}>{activeChat?.title ?? 'Чат'}</span>
               </header>
-              {loadingHistory && messages.length === 0 ? (
-                <div className={styles.loading} role="status">
-                  Загрузка…
-                </div>
-              ) : (
-                <Thread />
-              )}
+              <Thread />
               <div className={styles.composerArea}>
                 <div className={styles.composerMaxWidth}>
                   <Composer

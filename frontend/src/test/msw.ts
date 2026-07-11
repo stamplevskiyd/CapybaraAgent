@@ -1,13 +1,15 @@
 import { setupServer } from 'msw/node'
 import { http, HttpResponse } from 'msw'
 
-// Benign default: any test that mounts useChatStream triggers GET /api/events
-// (the persistent push channel).  Return an immediately-complete empty
-// text/event-stream so parseSse reads zero events and MSW emits no warning.
+// Benign defaults for endpoints the chat shell touches on mount, so tests that are not
+// about them get empty data instead of MSW warnings: Chainlit header auth + thread list,
+// and Capybara's chat-prefs.
 const defaultHandlers = [
-  http.get('/api/events', () =>
-    new HttpResponse('', { headers: { 'Content-Type': 'text/event-stream' } }),
+  http.post('/chainlit/auth/header', () => HttpResponse.json({ success: true })),
+  http.post('/chainlit/project/threads', () =>
+    HttpResponse.json({ pageInfo: { hasNextPage: false, startCursor: null, endCursor: null }, data: [] }),
   ),
+  http.get('/api/chat-prefs', () => HttpResponse.json([])),
 ]
 
 export const server = setupServer(...defaultHandlers)

@@ -1,5 +1,5 @@
 import { convertMessage } from './convertMessage'
-import type { ChatMessage } from './useChatStream'
+import type { ChatMessage } from './messages'
 
 test('wraps text content into a single text part', () => {
   const msg: ChatMessage = { id: 'm1', role: 'assistant', content: 'Привет', streaming: false }
@@ -59,17 +59,4 @@ test('a running tool call has no result', () => {
   })
   expect(msg.content[0]).toMatchObject({ type: 'tool-call', toolCallId: 't2' })
   expect((msg.content[0] as { result?: unknown }).result).toBeUndefined()
-})
-
-test('passes memorySaves through message metadata', () => {
-  const msg = convertMessage({
-    id: 'a1',
-    role: 'assistant',
-    content: 'Ответ',
-    streaming: false,
-    memorySaves: [{ content: 'Любит чай', category: 'preference' }],
-  })
-  expect((msg.metadata?.custom as { memorySaves?: unknown })?.memorySaves).toEqual([
-    { content: 'Любит чай', category: 'preference' },
-  ])
 })
