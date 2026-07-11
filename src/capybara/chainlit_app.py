@@ -143,16 +143,18 @@ async def stream_agent_message(
     model: str,
     thread_id: str,
     response: cl.Message,
+    mode: str = "smart",
     new_step: Callable[[str], cl.Step] = _tool_step,
 ) -> None:
     """Stream one runner response into a Chainlit message.
 
     Text streams into *response*; tool calls open a Chainlit step on ``tool_start`` and
     finalize it (with the tool's output) on ``tool_end``, correlated by the run id in the
-    event payload.
+    event payload. *mode* selects the runtime (``"fast"`` react loop vs ``"smart"``
+    DeepAgents); it defaults to ``"smart"`` until the caller resolves the per-thread mode.
     """
     steps: dict[str, cl.Step] = {}
-    async for event in runner.stream(content, model=model, thread_id=thread_id):
+    async for event in runner.stream(content, model=model, thread_id=thread_id, mode=mode):
         payload = event.payload or {}
         if event.kind == "text" and event.content:
             await response.stream_token(event.content)

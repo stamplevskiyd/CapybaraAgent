@@ -7,6 +7,7 @@ from typing import Any, Literal, Protocol, cast
 from deepagents import create_deep_agent
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.prebuilt import create_react_agent
 
 from capybara.agent.model_registry import ModelRegistry
 
@@ -17,6 +18,15 @@ RunnerEventKind = Literal["text", "tool_start", "tool_end"]
 SYSTEM_PROMPT = (
     "You are CapybaraAgent, a local-first assistant. Use available tools when "
     "they help answer the user's request. Prefer clear, concise answers."
+)
+
+#: Recursion cap for the Fast (react) loop — keeps a confused weak model from spinning.
+FAST_RECURSION_LIMIT = 6
+
+#: System prompt for the Fast react loop.
+FAST_SYSTEM_PROMPT = (
+    "You are CapybaraAgent, a local-first assistant. Answer directly and concisely. "
+    "Use a tool only when it is clearly needed."
 )
 
 
@@ -44,8 +54,8 @@ class EventStreamingGraph(Protocol):
 
 ToolLike = BaseTool | Callable[..., Any] | dict[str, Any]
 
-#: Build a graph for one turn from that turn's tools and selected model.
-GraphFactory = Callable[[Sequence["ToolLike"], str], EventStreamingGraph]
+#: Build a graph for one turn from that turn's tools, selected model, and mode.
+GraphFactory = Callable[[Sequence["ToolLike"], str, str], EventStreamingGraph]
 
 
 @dataclass(frozen=True)
@@ -95,14 +105,17 @@ class DeepAgentRunner:
         *,
         model: str,
         thread_id: str,
+        mode: str,
     ) -> AsyncIterator[RunnerEvent]:
         """Stream normalized text/tool events for one user message."""
         tools: Sequence[ToolLike] = []
         if self._tool_provider is not None:
             tools = await self._tool_provider.tools()
-        graph = self._graph_factory(tools, model)
+        graph = self._graph_factory(tools, model, mode)
         payload: dict[str, object] = {"messages": [{"role": "user", "content": content}]}
-        config = {"configurable": {"thread_id": thread_id}}
+        config: dict[str, object] = {"configurable": {"thread_id": thread_id}}
+        if mode == "fast":
+            config["recursion_limit"] = FAST_RECURSION_LIMIT
         async for event in graph.astream_events(payload, version="v2", config=config):
             normalized = self._normalize_event(event)
             if normalized is not None:
@@ -172,6 +185,28 @@ def build_graph(
         model=registry.chat_model(model),
         tools=list(tools or []),
         system_prompt=SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+    )
+    return cast(EventStreamingGraph, graph)
+
+
+def build_fast_graph(
+    registry: ModelRegistry,
+    tools: Sequence[ToolLike] | None = None,
+    *,
+    model: str,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
+) -> EventStreamingGraph:
+    """Build the simple react-loop graph for Fast mode.
+
+    A ``create_react_agent`` graph: one model+tools loop, no planning or subagents, for
+    weak local models. Same LangGraph event stream and checkpointer contract as the Smart
+    graph, so the runner and UI need no changes.
+    """
+    graph = create_react_agent(
+        model=registry.chat_model(model),
+        tools=list(tools or []),
+        prompt=FAST_SYSTEM_PROMPT,
         checkpointer=checkpointer,
     )
     return cast(EventStreamingGraph, graph)

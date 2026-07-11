@@ -9,7 +9,12 @@ from chainlit.utils import mount_chainlit
 from fastapi import FastAPI
 from langgraph.checkpoint.memory import InMemorySaver
 
-from capybara.agent.deep_runtime import DeepAgentRunner, McpServerSpec, build_graph
+from capybara.agent.deep_runtime import (
+    DeepAgentRunner,
+    McpServerSpec,
+    build_fast_graph,
+    build_graph,
+)
 from capybara.agent.deep_tools import CompositeToolProvider, McpToolProvider, MemoryToolProvider
 from capybara.agent.model_registry import ModelRegistry
 from capybara.chainlit_app import configure_chainlit_runtime, current_user_id
@@ -63,12 +68,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # rebuilds (keyed by thread_id). In-memory for now: history for the model resets on
     # restart, while Chainlit's data layer keeps the visible transcript.
     checkpointer = InMemorySaver()
-    app.state.deep_agent_runner = DeepAgentRunner(
-        lambda tools, model: build_graph(
-            model_registry, tools, model=model, checkpointer=checkpointer
-        ),
-        tool_provider=tool_provider,
-    )
+    def graph_factory(tools, model, mode):  # type: ignore[no-untyped-def]
+        """Build the turn's graph: the Fast react loop or the Smart DeepAgents graph."""
+        build = build_fast_graph if mode == "fast" else build_graph
+        return build(model_registry, tools, model=model, checkpointer=checkpointer)
+
+    app.state.deep_agent_runner = DeepAgentRunner(graph_factory, tool_provider=tool_provider)
     configure_chainlit_runtime(
         app.state.deep_agent_runner,
         default_model=settings.default_model,

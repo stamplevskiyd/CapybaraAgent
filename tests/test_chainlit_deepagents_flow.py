@@ -15,6 +15,7 @@ class FakeRunner:
         *,
         model: str,
         thread_id: str,
+        mode: str = "smart",
     ) -> AsyncIterator[RunnerEvent]:
         """Yield a deterministic response."""
         assert content == "Hello"
@@ -49,6 +50,7 @@ class ToolRunner:
         *,
         model: str,
         thread_id: str,
+        mode: str = "smart",
     ) -> AsyncIterator[RunnerEvent]:
         """Yield tool start/end events and a final text token."""
         yield RunnerEvent(
