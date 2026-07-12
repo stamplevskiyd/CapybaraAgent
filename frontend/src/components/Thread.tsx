@@ -6,7 +6,7 @@
  * User messages render as right-aligned bubbles; assistant messages render with the CapyLogo
  * glyph, markdown content (via MarkdownText → MarkdownTextPrimitive), and a hover action bar.
  */
-import { ThreadPrimitive, MessagePrimitive, ActionBarPrimitive } from '@assistant-ui/react'
+import { ThreadPrimitive, MessagePrimitive, ActionBarPrimitive, useMessage } from '@assistant-ui/react'
 import { ArrowDown, Copy, RefreshCw } from 'lucide-react'
 import { CapyLogo } from './CapyLogo'
 import { MarkdownText } from './MessageMarkdown'
@@ -29,7 +29,7 @@ function UserMessage() {
   )
 }
 
-/** Three-dot "thinking" indicator shown on the last assistant message before its first token. */
+/** Three-dot "thinking" indicator shown while the model is working but not yet typing text. */
 function TypingIndicator() {
   return (
     <div className={styles.typing} role="status" aria-label="Модель печатает">
@@ -38,6 +38,21 @@ function TypingIndicator() {
       <span className={styles.typingDot} />
     </div>
   )
+}
+
+/**
+ * Show the typing indicator whenever the turn is still running but no answer text has
+ * started streaming yet — before the first token AND in the gaps between tool calls (where
+ * the message already has tool-call parts, so `hasContent` is true and would otherwise hide
+ * the indicator, leaving a multi-tool reply looking frozen). Once the model emits text, the
+ * streaming text is the feedback and the dots hide.
+ */
+function ThinkingWhileWorking() {
+  const working = useMessage((m) => {
+    if (m.status?.type !== 'running') return false
+    return !m.content.some((part) => part.type === 'text' && part.text.length > 0)
+  })
+  return working ? <TypingIndicator /> : null
 }
 
 /**
@@ -62,8 +77,8 @@ function AssistantMessage() {
         <MessagePrimitive.Content
           components={{ Text: MarkdownText, tools: { Fallback: ToolCallCard } }}
         />
-        <MessagePrimitive.If last hasContent={false}>
-          <TypingIndicator />
+        <MessagePrimitive.If last>
+          <ThinkingWhileWorking />
         </MessagePrimitive.If>
         <MessagePrimitive.If hasContent>
           <ActionBarPrimitive.Root className={styles.actions}>

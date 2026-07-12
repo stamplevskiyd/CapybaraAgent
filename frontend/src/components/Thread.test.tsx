@@ -130,3 +130,27 @@ test('no typing indicator once the assistant message has content', () => {
   )
   expect(screen.queryByRole('status', { name: 'Модель печатает' })).not.toBeInTheDocument()
 })
+
+test('keeps the typing indicator in the gap after a tool call, before answer text', () => {
+  // Multi-tool turn: a tool result is in, the model is still running, but no answer text
+  // has streamed yet. The indicator must stay so the reply never looks frozen.
+  const runtime = seedMessages(
+    [
+      { id: 'u1', role: 'user', content: 'Вопрос', streaming: false },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '',
+        streaming: true,
+        toolCalls: [{ id: 't1', name: 'recall', args: {}, result: 'готово', running: false }],
+      },
+    ],
+    true,
+  )
+  render(
+    <AssistantRuntimeProvider runtime={runtime}>
+      <Thread />
+    </AssistantRuntimeProvider>,
+  )
+  expect(screen.getByRole('status', { name: 'Модель печатает' })).toBeInTheDocument()
+})
