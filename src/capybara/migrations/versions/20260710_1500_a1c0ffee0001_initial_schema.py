@@ -8,7 +8,7 @@ Single baseline revision (the pre-Chainlit incremental history was collapsed —
 there are no deployments to migrate). Two schemas:
 
 - ``public``: Capybara's own tables — users (auth), facts (long-term memory),
-  mcp_servers/mcp_tools (MCP curation), chat_prefs (per-user thread metadata).
+  mcp_servers/mcp_tools (MCP curation), chat_settings (per-user thread metadata).
 - ``chainlit``: Chainlit's SQLAlchemy data layer (threads/steps/elements/feedbacks and
   its own ``users``, which would otherwise collide with auth users in ``public``).
   The data-layer connection sets ``search_path=chainlit``; DDL is Chainlit's canonical
@@ -130,7 +130,7 @@ def upgrade() -> None:
     op.create_index("ix_mcp_tools_server_id", "mcp_tools", ["server_id"])
 
     op.create_table(
-        "chat_prefs",
+        "chat_settings",
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("thread_id", sa.Uuid(), nullable=False),
@@ -138,10 +138,10 @@ def upgrade() -> None:
         sa.Column("model", sa.String(length=200), nullable=True),
         *_timestamps(),
         sa.ForeignKeyConstraint(
-            ["user_id"], ["users.id"], name="fk_chat_prefs_user_id_users", ondelete="CASCADE"
+            ["user_id"], ["users.id"], name="fk_chat_settings_user_id_users", ondelete="CASCADE"
         ),
-        sa.PrimaryKeyConstraint("id", name="pk_chat_prefs"),
-        sa.UniqueConstraint("user_id", "thread_id", name="uq_chat_prefs_user_id_thread_id"),
+        sa.PrimaryKeyConstraint("id", name="pk_chat_settings"),
+        sa.UniqueConstraint("user_id", "thread_id", name="uq_chat_settings_user_id_thread_id"),
     )
 
     _create_chainlit_schema()
@@ -245,7 +245,7 @@ def _create_chainlit_schema() -> None:
 def downgrade() -> None:
     """Drop everything this revision created (leave the pgvector extension)."""
     op.execute("DROP SCHEMA IF EXISTS chainlit CASCADE")
-    op.drop_table("chat_prefs")
+    op.drop_table("chat_settings")
     op.drop_index("ix_mcp_tools_server_id", table_name="mcp_tools")
     op.drop_table("mcp_tools")
     op.drop_index("ix_mcp_servers_user_id", table_name="mcp_servers")

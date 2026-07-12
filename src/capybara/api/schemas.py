@@ -178,7 +178,7 @@ class McpServerOut(BaseModel):
     tools: list[McpToolOut]
 
 
-class ChatPrefOut(BaseModel):
+class ChatSettingsOut(BaseModel):
     """Response schema for a thread's per-user preferences."""
 
     model_config = ConfigDict(from_attributes=True)
@@ -189,7 +189,7 @@ class ChatPrefOut(BaseModel):
     mode: AgentMode
 
 
-class ChatPrefUpsert(BaseModel):
+class ChatSettingsUpsert(BaseModel):
     """Request schema to set a thread's favorite flag, selected model, and agent mode."""
 
     is_favorite: bool = False

@@ -13,13 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.datastructures import Headers
 
 from capybara.agent.deep_runtime import DeepAgentRunner
+from capybara.api.dependencies import authenticate_bearer
 from capybara.config import Settings, get_settings
-from capybara.db.models import ChatPref
-from capybara.repositories.user_repo import UserRepo
-from capybara.security.tokens import decode_access_token
+from capybara.db.models import ChatSettings
 
-#: Look up a thread's saved prefs for a user (wired to the GetChatPref command).
-PrefLookup = Callable[[UUID, UUID], Awaitable[ChatPref | None]]
+#: Look up a thread's saved prefs for a user (wired to the GetChatSettings command).
+PrefLookup = Callable[[UUID, UUID], Awaitable[ChatSettings | None]]
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +92,11 @@ async def resolve_user(
     scheme, _, token = header.partition(" ")
     if scheme.lower() != "bearer" or not token:
         return None
-    try:
-        user_id = decode_access_token(
-            token, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm
-        )
-    except jwt.InvalidTokenError:
-        return None
     async with sessionmaker() as session:
-        user = await UserRepo(session).get(user_id)
+        try:
+            user = await authenticate_bearer(token, session=session, settings=settings)
+        except jwt.InvalidTokenError:
+            return None
     if user is None:
         return None
     return cl.User(identifier=user.username, metadata={"user_id": str(user.id)})

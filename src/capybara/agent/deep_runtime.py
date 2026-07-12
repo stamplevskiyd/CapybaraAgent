@@ -52,7 +52,7 @@ class EventStreamingGraph(Protocol):
         ...
 
 
-ToolLike = BaseTool | Callable[..., Any] | dict[str, Any]
+ToolLike = BaseTool | Callable[..., Any]
 
 #: Build a graph for one turn from that turn's tools, selected model, and mode.
 GraphFactory = Callable[[Sequence["ToolLike"], str, str], EventStreamingGraph]

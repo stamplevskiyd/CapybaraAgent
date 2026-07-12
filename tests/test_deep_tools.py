@@ -5,10 +5,8 @@ from uuid import UUID, uuid4
 from langchain_core.tools import BaseTool
 
 from capybara.agent.deep_tools import (
-    CompositeToolProvider,
     McpServerSpec,
-    McpToolProvider,
-    MemoryToolProvider,
+    UserToolProvider,
     build_mcp_tools,
     make_recall_tool,
 )
@@ -35,18 +33,6 @@ class FakeMcpSpecService:
         """Record the call and return the canned specs."""
         self.calls.append(user_id)
         return self._specs
-
-
-class FakeProvider:
-    """Tool provider fake returning a fixed tool list."""
-
-    def __init__(self, tools: list[object]) -> None:
-        """Store the tools to yield."""
-        self._tools = tools
-
-    async def tools(self) -> list[object]:
-        """Return the fixed tools."""
-        return self._tools
 
 
 class FakeRecallService:
@@ -94,9 +80,9 @@ async def test_recall_tool_reports_no_facts() -> None:
 
 
 async def test_provider_yields_recall_tool_for_current_user() -> None:
-    """With a resolvable user, the provider hands the runner that user's recall tool."""
+    """With a resolvable user and a recall fn, the provider hands over that user's recall tool."""
     user_id = uuid4()
-    provider = MemoryToolProvider(FakeRecallService([]).recall, get_user_id=lambda: user_id)
+    provider = UserToolProvider(FakeRecallService([]).recall, None, get_user_id=lambda: user_id)
 
     tools = await provider.tools()
 
@@ -104,15 +90,19 @@ async def test_provider_yields_recall_tool_for_current_user() -> None:
 
 
 async def test_provider_yields_nothing_without_a_user() -> None:
-    """No authenticated user this turn → no per-user tools (never leak another user's memory)."""
-    provider = MemoryToolProvider(FakeRecallService([]).recall, get_user_id=lambda: None)
+    """No authenticated user this turn → no per-user tools, and no MCP service is queried."""
+    service = FakeMcpSpecService([McpServerSpec("home", "http://h", {}, frozenset({"a"}))])
+    provider = UserToolProvider(
+        FakeRecallService([]).recall, service.enabled_tool_specs, get_user_id=lambda: None
+    )
 
     assert await provider.tools() == []
+    assert service.calls == []
 
 
-async def test_provider_yields_nothing_without_a_recall_fn() -> None:
+async def test_provider_skips_recall_without_a_recall_fn() -> None:
     """No recall callable configured → no recall tool, even with a user."""
-    provider = MemoryToolProvider(None, get_user_id=uuid4)
+    provider = UserToolProvider(None, None, get_user_id=uuid4)
 
     assert await provider.tools() == []
 
@@ -163,40 +153,36 @@ async def test_build_mcp_tools_skips_servers_with_no_enabled_tools() -> None:
     assert contacted is False
 
 
-async def test_mcp_provider_looks_up_specs_for_current_user() -> None:
-    """The provider resolves the user and asks for that user's specs."""
+async def test_provider_looks_up_mcp_specs_for_current_user() -> None:
+    """The provider resolves the user and asks for that user's MCP specs."""
     user_id = uuid4()
     service = FakeMcpSpecService([])  # empty specs → no server contact
-    provider = McpToolProvider(service.enabled_tool_specs, get_user_id=lambda: user_id)
+    provider = UserToolProvider(None, service.enabled_tool_specs, get_user_id=lambda: user_id)
 
-    tools = await provider.tools()
-
-    assert tools == []
+    assert await provider.tools() == []
     assert service.calls == [user_id]
 
 
-async def test_mcp_provider_skips_service_without_a_user() -> None:
-    """No authenticated user → the MCP service is never queried."""
-    service = FakeMcpSpecService([McpServerSpec("home", "http://h", {}, frozenset({"a"}))])
-    provider = McpToolProvider(service.enabled_tool_specs, get_user_id=lambda: None)
-
-    assert await provider.tools() == []
-    assert service.calls == []
-
-
-async def test_mcp_provider_without_a_specs_fn_yields_nothing() -> None:
+async def test_provider_without_an_mcp_specs_fn_yields_no_mcp_tools() -> None:
     """No specs callable configured → no MCP tools."""
-    provider = McpToolProvider(None, get_user_id=uuid4)
+    provider = UserToolProvider(None, None, get_user_id=uuid4)
 
     assert await provider.tools() == []
 
 
-async def test_composite_provider_concatenates_tools_in_order() -> None:
-    """The composite yields every child provider's tools, preserving order."""
-    composite = CompositeToolProvider(
-        FakeProvider([FakeTool("x")]), FakeProvider([FakeTool("y"), FakeTool("z")])
+async def test_provider_concatenates_memory_then_mcp_tools(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The provider returns memory tools first, then MCP tools, for the resolved user."""
+    from capybara.agent import deep_tools
+
+    async def fake_build_mcp_tools(specs: object, **_kwargs: object) -> list[FakeTool]:
+        return [FakeTool("home_turn_on")]
+
+    monkeypatch.setattr(deep_tools, "build_mcp_tools", fake_build_mcp_tools)
+    service = FakeMcpSpecService([McpServerSpec("home", "http://h", {}, frozenset({"a"}))])
+    provider = UserToolProvider(
+        FakeRecallService([]).recall, service.enabled_tool_specs, get_user_id=uuid4
     )
 
-    tools = await composite.tools()
+    tools = await provider.tools()
 
-    assert [tool.name for tool in tools] == ["x", "y", "z"]
+    assert [tool.name for tool in tools] == ["recall", "home_turn_on"]

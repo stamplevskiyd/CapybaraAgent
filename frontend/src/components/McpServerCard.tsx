@@ -4,6 +4,7 @@ import { RotateCw, Trash2 } from 'lucide-react'
 import type { McpServerOut } from '../api/types'
 import { McpToolChip } from './McpToolChip'
 import { pluralTools } from './plural'
+import { cx } from '../cx'
 import styles from './McpServerCard.module.css'
 
 export function McpServerCard({
@@ -38,10 +39,7 @@ export function McpServerCard({
   return (
     <div className={styles.card}>
       <div className={styles.head}>
-        <span
-          className={ok ? `${styles.dot} ${styles.dotOk}` : `${styles.dot} ${styles.dotErr}`}
-          aria-hidden="true"
-        />
+        <span className={cx(styles.dot, ok ? styles.dotOk : styles.dotErr)} aria-hidden="true" />
         <div className={styles.titleBlock}>
           <span className={styles.name}>{server.name}</span>
           <span className={styles.url}>{server.url}</span>
@@ -61,7 +59,7 @@ export function McpServerCard({
             disabled={refreshing}
             onClick={handleRefresh}
           >
-            <RotateCw size={14} className={refreshing ? styles.spin : undefined} />
+            <RotateCw size={14} className={cx(refreshing && styles.spin)} />
           </button>
           <button
             type="button"
@@ -81,11 +79,7 @@ export function McpServerCard({
       </div>
       <div className={styles.tools}>
         {server.tools.map((t) => (
-          <McpToolChip
-            key={t.id}
-            tool={t}
-            onToggle={(enabled) => onToggleTool(t.id, enabled)}
-          />
+          <McpToolChip key={t.id} tool={t} onToggle={(enabled) => onToggleTool(t.id, enabled)} />
         ))}
       </div>
     </div>

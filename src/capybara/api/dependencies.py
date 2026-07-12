@@ -48,6 +48,23 @@ def get_sessionmaker(request: Request) -> async_sessionmaker[AsyncSession]:
     return cast(async_sessionmaker[AsyncSession], request.app.state.sessionmaker)
 
 
+async def authenticate_bearer(
+    token: str, *, session: AsyncSession, settings: Settings
+) -> User | None:
+    """Decode a bearer token and load its user, or None if that user is gone.
+
+    Shared by the REST ``get_current_user`` dependency and the Chainlit header-auth
+    callback so both entry points trust tokens the same way.
+
+    Raises:
+        jwt.InvalidTokenError: If the token is malformed, expired, or otherwise invalid.
+    """
+    user_id = decode_access_token(
+        token, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm
+    )
+    return await UserRepo(session).get(user_id)
+
+
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -57,12 +74,11 @@ async def get_current_user(
     if credentials is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     try:
-        user_id = decode_access_token(
-            credentials.credentials, secret=settings.jwt_secret, algorithm=settings.jwt_algorithm
+        user = await authenticate_bearer(
+            credentials.credentials, session=session, settings=settings
         )
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid or expired token") from None
-    user = await UserRepo(session).get(user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     return user

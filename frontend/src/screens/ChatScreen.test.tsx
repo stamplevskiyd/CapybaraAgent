@@ -86,7 +86,7 @@ test('welcome greets the user and streams a reply after sending', async () => {
     http.get('/api/models', () =>
       HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
     ),
-    http.put('/api/chat-prefs/:threadId', async ({ params, request }) => {
+    http.put('/api/chat-settings/:threadId', async ({ params, request }) => {
       prefPut = { id: String(params.threadId), body: await request.json() }
       return HttpResponse.json({ thread_id: params.threadId, is_favorite: false, model: null })
     }),
@@ -186,7 +186,7 @@ test('a failed favorite toggle is rolled back to the server state', async () => 
         data: [thread],
       }),
     ),
-    http.put('/api/chat-prefs/c1', () => {
+    http.put('/api/chat-settings/c1', () => {
       putCalls++
       return new HttpResponse('boom', { status: 500 })
     }),
@@ -229,7 +229,7 @@ test('selecting a thread resumes it through the Chainlit session', async () => {
   expect(screen.getAllByText('Мой чат').length).toBeGreaterThan(1)
 })
 
-test('selecting a model on an active thread persists it to chat-prefs', async () => {
+test('selecting a model on an active thread persists it to chat-settings', async () => {
   let putBody: unknown = null
   server.use(
     http.get('/api/models', () =>
@@ -241,7 +241,7 @@ test('selecting a model on an active thread persists it to chat-prefs', async ()
         data: [thread],
       }),
     ),
-    http.put('/api/chat-prefs/c1', async ({ request }) => {
+    http.put('/api/chat-settings/c1', async ({ request }) => {
       putBody = await request.json()
       return HttpResponse.json({ thread_id: 'c1', is_favorite: false, model: 'qwen3:8b' })
     }),
@@ -258,7 +258,7 @@ test('selecting a model on an active thread persists it to chat-prefs', async ()
   await waitFor(() => expect(putBody).toMatchObject({ is_favorite: false, model: 'qwen3:8b' }))
 })
 
-test('selecting a mode on an active thread persists it to chat-prefs', async () => {
+test('selecting a mode on an active thread persists it to chat-settings', async () => {
   let putBody: unknown = null
   server.use(
     http.get('/api/models', () =>
@@ -270,7 +270,7 @@ test('selecting a mode on an active thread persists it to chat-prefs', async () 
         data: [thread],
       }),
     ),
-    http.put('/api/chat-prefs/c1', async ({ request }) => {
+    http.put('/api/chat-settings/c1', async ({ request }) => {
       putBody = await request.json()
       return HttpResponse.json({ thread_id: 'c1', is_favorite: false, model: null, mode: 'smart' })
     }),

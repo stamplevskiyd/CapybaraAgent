@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useApiClient } from '../auth/AuthContext'
 import type { ChatOut } from '../api/types'
 import { chainlitClient } from '../chainlit/client'
-import { listChatPrefs } from './chatPrefs'
+import { listChatSettings } from './chatSettings'
 
 /** How many threads the sidebar fetches (no pagination UI yet). */
 const THREAD_PAGE_SIZE = 200
@@ -14,7 +14,7 @@ function toIso(createdAt: number | string): string {
 
 /**
  * Load the user's chat list: Chainlit owns the threads (id, name, createdAt); the
- * favorite flag and selected model ride in Capybara's chat-prefs, joined by thread id.
+ * favorite flag and selected model ride in Capybara's chat-settings, joined by thread id.
  *
  * `reload` is safe to call before the Chainlit session is authenticated — a failed
  * fetch keeps the current list, and the caller re-reloads once connected.
@@ -29,7 +29,7 @@ export function useThreads() {
     try {
       const [threads, prefs] = await Promise.all([
         chainlitClient.listThreads({ first: THREAD_PAGE_SIZE }, {}),
-        listChatPrefs(api),
+        listChatSettings(api),
       ])
       const prefByThread = new Map(prefs.map((p) => [p.thread_id, p]))
       setChats(

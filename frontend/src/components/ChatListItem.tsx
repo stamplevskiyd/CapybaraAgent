@@ -2,6 +2,7 @@
 import { useState, useEffect, type KeyboardEvent } from 'react'
 import { Star, MoreHorizontal } from 'lucide-react'
 import type { ChatOut } from '../api/types'
+import { cx } from '../cx'
 import styles from './Sidebar.module.css'
 
 /** One chat row. Star toggles favorite; the ⋯ button opens the context menu at its anchor. */
@@ -58,10 +59,10 @@ export function ChatListItem({
   }
 
   return (
-    <div className={active ? `${styles.chatRow} ${styles.chatRowActive}` : styles.chatRow}>
+    <div className={cx(styles.chatRow, active && styles.chatRowActive)}>
       <button
         type="button"
-        className={chat.is_favorite ? `${styles.star} ${styles.starOn}` : styles.star}
+        className={cx(styles.star, chat.is_favorite && styles.starOn)}
         aria-label={chat.is_favorite ? 'Убрать из избранного' : 'В избранное'}
         onClick={onToggleFavorite}
       >

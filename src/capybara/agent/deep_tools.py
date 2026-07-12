@@ -13,7 +13,7 @@ from uuid import UUID
 from langchain_core.tools import BaseTool, StructuredTool
 from langchain_mcp_adapters.tools import load_mcp_tools
 
-from capybara.agent.deep_runtime import McpServerSpec, ToolLike, ToolProvider
+from capybara.agent.deep_runtime import McpServerSpec, ToolLike
 from capybara.agent.mcp import streamable_http_connection
 from capybara.db.models import Fact
 
@@ -69,28 +69,6 @@ def make_recall_tool(recall: RecallFn, user_id: UUID) -> BaseTool:
     )
 
 
-class MemoryToolProvider:
-    """Hand the DeepAgents runner the current user's memory tools, rebuilt each turn.
-
-    Memory is per-user, so the tool must bind to whoever the turn belongs to. The user
-    id is resolved lazily via *get_user_id* (the Chainlit session) rather than captured
-    once, and an unresolved user yields no tools — a turn never reaches another user's
-    memory.
-    """
-
-    def __init__(self, recall: RecallFn | None, *, get_user_id: UserIdGetter) -> None:
-        """Store the recall callable and the per-turn user resolver."""
-        self._recall = recall
-        self._get_user_id = get_user_id
-
-    async def tools(self) -> Sequence[ToolLike]:
-        """Return the recall tool bound to this turn's user, or nothing if unresolved."""
-        user_id = self._get_user_id()
-        if user_id is None or self._recall is None:
-            return []
-        return [make_recall_tool(self._recall, user_id)]
-
-
 #: Load one server's LangChain tools (prefixed); raises when the server is unreachable.
 McpToolLoader = Callable[[McpServerSpec], Awaitable[list[BaseTool]]]
 
@@ -134,37 +112,37 @@ async def build_mcp_tools(
     return tools
 
 
-class McpToolProvider:
-    """Hand the runner the current user's MCP tools, reconnected each turn.
+class UserToolProvider:
+    """Hand the runner the current user's per-turn tools: long-term memory + MCP.
 
-    MCP tools are per-user and their servers can come and go, so they are resolved
-    lazily: an unresolved user yields nothing, and unreachable servers are dropped by
-    ``build_mcp_tools`` rather than failing the turn.
+    Both tool sets are per-user, so the provider resolves the turn's user once via
+    *get_user_id* (the Chainlit session) rather than capturing it, and yields nothing
+    when unauthenticated — a turn never reaches another user's memory or servers.
+    Memory tools come first, then MCP; unreachable MCP servers are dropped by
+    ``build_mcp_tools`` rather than failing the turn. A ``None`` callable simply
+    contributes no tools of that kind.
     """
 
-    def __init__(self, specs: McpSpecsFn | None, *, get_user_id: UserIdGetter) -> None:
-        """Store the specs callable and the per-turn user resolver."""
-        self._specs = specs
+    def __init__(
+        self,
+        recall: RecallFn | None,
+        mcp_specs: McpSpecsFn | None,
+        *,
+        get_user_id: UserIdGetter,
+    ) -> None:
+        """Store the recall/MCP-specs callables and the per-turn user resolver."""
+        self._recall = recall
+        self._mcp_specs = mcp_specs
         self._get_user_id = get_user_id
 
     async def tools(self) -> Sequence[ToolLike]:
-        """Return the current user's MCP tools, or nothing if unresolved."""
+        """Return this turn's memory + MCP tools, or nothing if the user is unresolved."""
         user_id = self._get_user_id()
-        if user_id is None or self._specs is None:
+        if user_id is None:
             return []
-        return list(await build_mcp_tools(await self._specs(user_id)))
-
-
-class CompositeToolProvider:
-    """Combine several tool providers behind the runner's single-provider seam."""
-
-    def __init__(self, *providers: ToolProvider) -> None:
-        """Store the child providers to combine, in order."""
-        self._providers = providers
-
-    async def tools(self) -> Sequence[ToolLike]:
-        """Return every child provider's tools for this turn, in order."""
         tools: list[ToolLike] = []
-        for provider in self._providers:
-            tools.extend(await provider.tools())
+        if self._recall is not None:
+            tools.append(make_recall_tool(self._recall, user_id))
+        if self._mcp_specs is not None:
+            tools.extend(await build_mcp_tools(await self._mcp_specs(user_id)))
         return tools

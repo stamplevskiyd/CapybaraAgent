@@ -14,9 +14,18 @@ import { useModels } from '../chat/useModels'
 import { useChainlitThread } from '../chainlit/useChainlitThread'
 import { useChatRuntime } from '../chat/runtime'
 import { chainlitClient } from '../chainlit/client'
-import { deleteChatPref, putChatPref } from '../chat/chatPrefs'
-import { loadLastModel, saveLastModel } from '../chat/lastModel'
+import { deleteChatSettings, putChatSettings } from '../chat/chatSettings'
+import {
+  loadLastModel,
+  saveLastModel,
+  loadLastMode,
+  saveLastMode,
+  loadSidebarCollapsed,
+  saveSidebarCollapsed,
+} from '../localPrefs'
+import { cx } from '../cx'
 import type { AgentMode } from '../chat/messages'
+import type { ChatOut } from '../api/types'
 import styles from './ChatScreen.module.css'
 
 /**
@@ -25,36 +34,23 @@ import styles from './ChatScreen.module.css'
  * Chainlit owns threads and messages. The sidebar lists persisted threads merged with
  * per-thread prefs (favorite, model); selecting one resumes it over the socket; «new chat»
  * resets the session and the server assigns a thread id with the first message, which
- * `threadId` then reports back. Favorite and model changes persist to `/chat-prefs`;
+ * `threadId` then reports back. Favorite and model changes persist to `/chat-settings`;
  * rename/delete go to Chainlit directly.
  */
 export function ChatScreen() {
   const { user } = useAuth()
   const api = useApiClient()
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
-  const [draftModel, setDraftModel] = useState<string | null>(() => loadLastModel())
-  const [draftMode, setDraftMode] = useState<AgentMode>(() => {
-    const v = localStorage.getItem('capybara.lastMode')
-    return v === 'smart' ? 'smart' : 'fast'
-  })
+  const [draftModel, setDraftModel] = useState<string | null>(loadLastModel)
+  const [draftMode, setDraftMode] = useState<AgentMode>(loadLastMode)
   const [view, setView] = useState<'chat' | 'memory' | 'mcp'>('chat')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('capybara.sidebarCollapsed') === '1'
-    } catch {
-      return false
-    }
-  })
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(loadSidebarCollapsed)
 
   /** Toggle the sidebar open/shut and remember the choice across sessions. */
   function toggleSidebar() {
     setSidebarCollapsed((v) => {
       const next = !v
-      try {
-        localStorage.setItem('capybara.sidebarCollapsed', next ? '1' : '0')
-      } catch {
-        // ignore storage failures — collapse state is a convenience
-      }
+      saveSidebarCollapsed(next)
       return next
     })
   }
@@ -78,9 +74,11 @@ export function ChatScreen() {
       setActiveThreadId(newId)
       void (async () => {
         if (draftModel) {
-          await putChatPref(api, newId, { is_favorite: false, model: draftModel, mode: draftMode }).catch(
-            () => undefined,
-          )
+          await putChatSettings(api, newId, {
+            is_favorite: false,
+            model: draftModel,
+            mode: draftMode,
+          }).catch(() => undefined)
         }
         await reload()
       })()
@@ -112,18 +110,31 @@ export function ChatScreen() {
   })
 
   /**
-   * Toggle favorite: optimistic local flip, then persist to chat-prefs. On failure the
-   * list is re-synced from the server so the UI never drifts from the persisted state.
+   * Persist a partial chat-settings change: optimistic local patch, then a full-record PUT
+   * (the endpoint replaces the row, so untouched fields are merged from the current chat).
+   * A failed save re-syncs the list from the server so the UI never drifts.
    */
-  async function handleToggleFavorite(id: string) {
+  async function persistChatSettings(
+    id: string,
+    patch: Partial<Pick<ChatOut, 'is_favorite' | 'model' | 'mode'>>,
+  ) {
     const chat = chats.find((c) => c.id === id)
-    const next = !(chat?.is_favorite ?? false)
-    patchLocal(id, { is_favorite: next })
+    patchLocal(id, patch)
     try {
-      await putChatPref(api, id, { is_favorite: next, model: chat?.model ?? null, mode: chat?.mode ?? 'fast' })
+      await putChatSettings(api, id, {
+        is_favorite: patch.is_favorite ?? chat?.is_favorite ?? false,
+        model: patch.model !== undefined ? patch.model : (chat?.model ?? null),
+        mode: patch.mode ?? chat?.mode ?? 'fast',
+      })
     } catch {
       await reload()
     }
+  }
+
+  /** Toggle favorite (optimistic; re-syncs on failure). */
+  async function handleToggleFavorite(id: string) {
+    const chat = chats.find((c) => c.id === id)
+    await persistChatSettings(id, { is_favorite: !(chat?.is_favorite ?? false) })
   }
 
   /** Rename: optimistic local update, then persist to Chainlit; re-sync on failure. */
@@ -149,49 +160,24 @@ export function ChatScreen() {
     try {
       await chainlitClient.deleteThread(id)
       // The pref is a soft reference; it being gone already is fine.
-      await deleteChatPref(api, id).catch(() => undefined)
+      await deleteChatSettings(api, id).catch(() => undefined)
     } catch {
       await reload()
     }
   }
 
-  /**
-   * Update the selected model; persists to localStorage, updates the draft, and saves
-   * the active thread's pref if one is open. A failed save re-syncs from the server.
-   */
+  /** Update the selected model: remember it, update the draft, and save the open thread. */
   async function handleSelectModel(model: string) {
     saveLastModel(model)
     setDraftModel(model)
-    if (activeThreadId) {
-      const wasFavorite = activeChat?.is_favorite ?? false
-      patchLocal(activeThreadId, { model })
-      try {
-        await putChatPref(api, activeThreadId, { is_favorite: wasFavorite, model, mode: selectedMode })
-      } catch {
-        await reload()
-      }
-    }
+    if (activeThreadId) await persistChatSettings(activeThreadId, { model })
   }
 
-  /**
-   * Update the selected agent mode; persists to localStorage, updates the draft, and saves
-   * the active thread's pref if one is open. A failed save re-syncs from the server.
-   */
+  /** Update the selected agent mode: remember it, update the draft, and save the open thread. */
   async function handleSelectMode(mode: AgentMode) {
-    localStorage.setItem('capybara.lastMode', mode)
+    saveLastMode(mode)
     setDraftMode(mode)
-    if (activeThreadId) {
-      patchLocal(activeThreadId, { mode })
-      try {
-        await putChatPref(api, activeThreadId, {
-          is_favorite: activeChat?.is_favorite ?? false,
-          model: activeChat?.model ?? draftModel,
-          mode,
-        })
-      } catch {
-        await reload()
-      }
-    }
+    if (activeThreadId) await persistChatSettings(activeThreadId, { mode })
   }
 
   /** Open a persisted thread: resume its session and show the chat view. */
@@ -265,11 +251,7 @@ export function ChatScreen() {
             </div>
           ) : (
             <div className={styles.active}>
-              <header
-                className={
-                  sidebarCollapsed ? `${styles.header} ${styles.headerShifted}` : styles.header
-                }
-              >
+              <header className={cx(styles.header, sidebarCollapsed && styles.headerShifted)}>
                 <span className={styles.chatTitle}>{activeChat?.title ?? 'Чат'}</span>
               </header>
               <Thread />

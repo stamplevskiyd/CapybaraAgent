@@ -26,7 +26,7 @@ See `design_handoff_capybaraagent/README.md` for the UI spec of each.
 Work ships as **vertical slices**, each with its own spec in `docs/superpowers/specs/`.
 Do not build subsystems that are not in the current slice. Shipped so far: chat via
 Chainlit + DeepAgents, local auth (JWT), memory facts with semantic recall, MCP client
-(attach/curate remote servers), per-thread chat prefs.
+(attach/curate remote servers), per-thread chat settings.
 
 ## Tech stack
 
@@ -39,7 +39,7 @@ Chainlit + DeepAgents, local auth (JWT), memory facts with semantic recall, MCP 
   by thread id carries conversation state. Providers are abstracted behind
   `agent/model_registry.py::ModelRegistry`; the first provider is **Ollama on the host**
   (`host.docker.internal`), OpenAI/OpenRouter planned.
-- **Web:** FastAPI for the custom domain APIs (auth, users, memory, MCP, chat-prefs,
+- **Web:** FastAPI for the custom domain APIs (auth, users, memory, MCP, chat-settings,
   models, health).
 - **Persistence:** PostgreSQL (+pgvector) + **SQLAlchemy 2.0 (async)** + **Alembic**.
 - **Packaging/deps:** **uv**. **Quality gates:** **ruff** (lint + format), **mypy** (strict).

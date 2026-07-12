@@ -6,6 +6,7 @@ import { ChatListItem } from './ChatListItem'
 import { ChatContextMenu } from './ChatContextMenu'
 import { UserCard } from './UserCard'
 import type { ChatOut } from '../api/types'
+import { cx } from '../cx'
 import styles from './Sidebar.module.css'
 
 /** Groups chats into today / yesterday / earlier buckets based on `created_at`. */
@@ -97,7 +98,7 @@ export function Sidebar({
 
   return (
     <aside
-      className={collapsed ? `${styles.sidebar} ${styles.sidebarCollapsed}` : styles.sidebar}
+      className={cx(styles.sidebar, collapsed && styles.sidebarCollapsed)}
       aria-hidden={collapsed || undefined}
     >
       <div className={styles.sidebarInner}>
@@ -160,9 +161,7 @@ export function Sidebar({
         <div className={styles.bottomBlock}>
           <button
             type="button"
-            className={
-              mcpActive ? `${styles.navButton} ${styles.navButtonActive}` : styles.navButton
-            }
+            className={cx(styles.navButton, mcpActive && styles.navButtonActive)}
             onClick={onOpenMcp}
           >
             <Server size={16} />
@@ -170,9 +169,7 @@ export function Sidebar({
           </button>
           <button
             type="button"
-            className={
-              memoryActive ? `${styles.navButton} ${styles.navButtonActive}` : styles.navButton
-            }
+            className={cx(styles.navButton, memoryActive && styles.navButtonActive)}
             onClick={onOpenMemory}
           >
             <Brain size={16} />

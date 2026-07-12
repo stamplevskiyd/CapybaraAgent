@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react'
 import { Brain, Check, ChevronRight } from 'lucide-react'
+import { cx } from '../cx'
 import styles from './ToolCallCard.module.css'
 
 /** Human-readable, localized labels for known tools; unknown tools show their raw name. */
@@ -45,10 +46,7 @@ export const ToolCallCard: ToolCallMessagePartComponent = ({ toolName, args, res
         ) : (
           <Check size={15} className={styles.check} />
         )}
-        <ChevronRight
-          size={15}
-          className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`}
-        />
+        <ChevronRight size={15} className={cx(styles.chevron, open && styles.chevronOpen)} />
       </button>
       {open && (
         <div className={styles.body}>

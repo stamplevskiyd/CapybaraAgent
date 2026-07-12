@@ -25,7 +25,7 @@ export interface ChatOut {
 }
 
 /** Per-thread preferences stored by Capybara (Chainlit has no concept of these). */
-export interface ChatPrefOut {
+export interface ChatSettingsOut {
   thread_id: string
   is_favorite: boolean
   model: string | null
@@ -46,11 +46,6 @@ export interface FactOut {
   source: 'manual' | 'auto'
   created_at: string
   updated_at: string
-}
-
-export interface FactCreate {
-  content: string
-  category: Category
 }
 
 export interface FactUpdate {
@@ -75,10 +70,4 @@ export interface McpServerOut {
   created_at: string
   updated_at: string
   tools: McpToolOut[]
-}
-
-export interface McpServerCreate {
-  name: string
-  url: string
-  headers?: Record<string, string>
 }

@@ -21,8 +21,7 @@ async def test_runner_streams_text_events() -> None:
     """The runner normalizes graph stream events into text events."""
     runner = DeepAgentRunner(lambda tools, model, mode: FakeGraph())
     events = [
-        event
-        async for event in runner.stream("Hi", model="llama3.1", thread_id="t1", mode="fast")
+        event async for event in runner.stream("Hi", model="llama3.1", thread_id="t1", mode="fast")
     ]
     assert events == [RunnerEvent(kind="text", content="hello", name=None, payload=None)]
 
@@ -42,8 +41,7 @@ async def test_runner_builds_graph_per_turn_with_tools_and_mode() -> None:
 
     runner = DeepAgentRunner(factory, tool_provider=FakeProvider())
     events = [
-        event
-        async for event in runner.stream("Hi", model="llama3.1", thread_id="t1", mode="fast")
+        event async for event in runner.stream("Hi", model="llama3.1", thread_id="t1", mode="fast")
     ]
 
     assert calls == [([sentinel_tool], "llama3.1", "fast")]
@@ -102,9 +100,7 @@ async def test_runner_factory_without_provider_builds_toolless_graph() -> None:
     assert events == [RunnerEvent(kind="text", content="hello", name=None, payload=None)]
 
 
-async def test_build_fast_graph_wires_react_agent(
-    settings, monkeypatch
-) -> None:  # type: ignore[no-untyped-def]
+async def test_build_fast_graph_wires_react_agent(settings, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """build_fast_graph hands the model, tools, and checkpointer to create_react_agent."""
     from capybara.agent import deep_runtime
     from capybara.agent.model_registry import ModelRegistry

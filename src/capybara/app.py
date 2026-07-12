@@ -15,15 +15,15 @@ from capybara.agent.deep_runtime import (
     build_fast_graph,
     build_graph,
 )
-from capybara.agent.deep_tools import CompositeToolProvider, McpToolProvider, MemoryToolProvider
+from capybara.agent.deep_tools import UserToolProvider
 from capybara.agent.model_registry import ModelRegistry
 from capybara.chainlit_app import configure_chainlit_runtime, current_user_id
-from capybara.commands.chat_pref.get import GetChatPref
+from capybara.commands.chat_settings.get import GetChatSettings
 from capybara.commands.fact.recall import RecallFacts
 from capybara.commands.mcp.tool_specs import ListEnabledToolSpecs
 from capybara.config import get_settings
 from capybara.db.engine import create_engine, create_sessionmaker
-from capybara.db.models import ChatPref, Fact
+from capybara.db.models import ChatSettings, Fact
 
 #: Where the Chainlit runtime is mounted, and the shim it loads. The shim (not
 #: chainlit_app.py itself) is the target because Chainlit executes the target file as a
@@ -54,20 +54,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async def mcp_specs(user_id: UUID) -> list[McpServerSpec]:
         return await ListEnabledToolSpecs(sessionmaker, user_id=user_id).execute()
 
-    async def pref_lookup(user_id: UUID, thread_id: UUID) -> ChatPref | None:
-        return await GetChatPref(sessionmaker, user_id=user_id, thread_id=thread_id).execute()
+    async def pref_lookup(user_id: UUID, thread_id: UUID) -> ChatSettings | None:
+        return await GetChatSettings(sessionmaker, user_id=user_id, thread_id=thread_id).execute()
 
     # Build the agent graph per turn so the selected model and the current user's
     # memory/MCP tools can be injected; the user is resolved from the authenticated
     # Chainlit session.
-    tool_provider = CompositeToolProvider(
-        MemoryToolProvider(recall, get_user_id=current_user_id),
-        McpToolProvider(mcp_specs, get_user_id=current_user_id),
-    )
+    tool_provider = UserToolProvider(recall, mcp_specs, get_user_id=current_user_id)
     # One process-wide checkpointer carries conversation state across per-turn graph
     # rebuilds (keyed by thread_id). In-memory for now: history for the model resets on
     # restart, while Chainlit's data layer keeps the visible transcript.
     checkpointer = InMemorySaver()
+
     def graph_factory(tools, model, mode):  # type: ignore[no-untyped-def]
         """Build the turn's graph: the Fast react loop or the Smart DeepAgents graph."""
         build = build_fast_graph if mode == "fast" else build_graph
@@ -96,7 +94,7 @@ def create_app() -> FastAPI:
     os.environ.setdefault("CHAINLIT_AUTH_SECRET", get_settings().jwt_secret)
     from capybara.api.routers import (
         auth,
-        chat_prefs,
+        chat_settings,
         health,
         mcp,
         memory,
@@ -105,7 +103,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
-    app.include_router(chat_prefs.router)
+    app.include_router(chat_settings.router)
     app.include_router(memory.router)
     app.include_router(mcp.router)
     app.include_router(models.router)

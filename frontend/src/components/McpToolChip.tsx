@@ -1,5 +1,6 @@
 /** A discovered MCP tool: mono name with an enable/disable checkbox toggle. */
 import type { McpToolOut } from '../api/types'
+import { cx } from '../cx'
 import styles from './McpToolChip.module.css'
 
 export function McpToolChip({
@@ -11,7 +12,7 @@ export function McpToolChip({
 }) {
   return (
     <label
-      className={tool.enabled ? styles.chip : `${styles.chip} ${styles.disabled}`}
+      className={cx(styles.chip, !tool.enabled && styles.disabled)}
       title={tool.description ?? undefined}
     >
       <input

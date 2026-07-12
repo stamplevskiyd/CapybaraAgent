@@ -12,6 +12,7 @@
 import { ComposerPrimitive, ThreadPrimitive } from '@assistant-ui/react'
 import { ArrowUp, Paperclip, Square } from 'lucide-react'
 import type { AgentMode } from '../chat/messages'
+import { cx } from '../cx'
 import styles from './Composer.module.css'
 
 /**
@@ -58,7 +59,7 @@ export function Composer({
           <Paperclip size={18} />
         </button>
         <select
-          className={`${styles.modelSelect} ${modelValid ? '' : styles.modelSelectInvalid}`}
+          className={cx(styles.modelSelect, !modelValid && styles.modelSelectInvalid)}
           aria-label="Модель"
           value={modelValid ? (selectedModel as string) : ''}
           onChange={(e) => onSelectModel(e.target.value)}

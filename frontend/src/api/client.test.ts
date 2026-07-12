@@ -24,14 +24,14 @@ test('401 throws ApiError and calls onUnauthorized', async () => {
 test('put sends a JSON body with the auth header', async () => {
   let seenBody: unknown = null
   server.use(
-    http.put('/api/chat-prefs/t1', async ({ request }) => {
+    http.put('/api/chat-settings/t1', async ({ request }) => {
       expect(request.headers.get('Authorization')).toBe('Bearer t0ken')
       seenBody = await request.json()
       return HttpResponse.json({ thread_id: 't1', is_favorite: true, model: null })
     }),
   )
   const client = createApiClient({ getToken: () => 't0ken', onUnauthorized: () => {} })
-  const pref = await client.put<{ thread_id: string }>('/chat-prefs/t1', {
+  const pref = await client.put<{ thread_id: string }>('/chat-settings/t1', {
     is_favorite: true,
     model: null,
   })
