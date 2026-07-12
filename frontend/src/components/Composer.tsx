@@ -27,6 +27,7 @@ export function Composer({
   onSelectModel,
   selectedMode,
   onSelectMode,
+  ready = true,
 }: {
   /** Available model names from Ollama. */
   models: string[]
@@ -38,8 +39,11 @@ export function Composer({
   selectedMode: AgentMode
   /** Called when the user picks a mode from the selector. */
   onSelectMode: (m: AgentMode) => void
+  /** Whether the chat transport is connected; send/Enter is blocked until it is. */
+  ready?: boolean
 }) {
   const modelValid = selectedModel !== null && models.includes(selectedModel)
+  const canSend = modelValid && ready
   return (
     <ComposerPrimitive.Root className={styles.composer}>
       <ComposerPrimitive.Input
@@ -78,12 +82,12 @@ export function Composer({
           <option value="smart">Умный</option>
         </select>
         <div className={styles.spacer} />
-        {/* Show Send button when thread is idle; disabled also when no valid model. */}
+        {/* Show Send when idle; disabled without a valid model or before the socket connects. */}
         <ThreadPrimitive.If running={false}>
           <ComposerPrimitive.Send
             className={styles.send}
             aria-label="Отправить"
-            disabled={!modelValid}
+            disabled={!canSend}
           >
             <ArrowUp size={18} />
           </ComposerPrimitive.Send>

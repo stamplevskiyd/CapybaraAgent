@@ -92,12 +92,14 @@ export function ChatScreen() {
   const selectedMode = activeChat?.mode ?? draftMode
 
   /**
-   * Send a message with the selected model riding in its metadata.
-   * No-ops when no valid model is selected — guards the Enter path as well as the button.
+   * Send a message with the selected model + mode riding in its metadata.
+   * No-ops when no valid model is selected OR the chat transport is not connected yet —
+   * this guards the Enter path (the composer's disabled Send button does not block Enter),
+   * so a message is never emitted into a not-yet-ready socket and silently lost.
    */
   async function handleSend(text: string) {
     const modelValid = selectedModel !== null && models.includes(selectedModel)
-    if (!modelValid) return
+    if (!modelValid || !connected) return
     await send(text, selectedModel, selectedMode)
   }
 
@@ -257,6 +259,7 @@ export function ChatScreen() {
                   onSelectModel={handleSelectModel}
                   selectedMode={selectedMode}
                   onSelectMode={handleSelectMode}
+                  ready={connected}
                 />
               </div>
             </div>
@@ -278,6 +281,7 @@ export function ChatScreen() {
                     onSelectModel={handleSelectModel}
                     selectedMode={selectedMode}
                     onSelectMode={handleSelectMode}
+                    ready={connected}
                   />
                 </div>
               </div>

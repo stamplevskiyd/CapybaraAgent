@@ -6,6 +6,7 @@ import { ChatScreen } from './ChatScreen'
 
 const sent = vi.hoisted(() => ({ calls: [] as { content: string; model?: string | null; mode?: string }[] }))
 const openThreadSpy = vi.hoisted(() => vi.fn())
+const conn = vi.hoisted(() => ({ value: true }))
 
 vi.mock('../chainlit/useChainlitThread', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
@@ -37,7 +38,7 @@ vi.mock('../chainlit/useChainlitThread', async () => {
       return {
         messages,
         threadId: messages.length > 0 ? 'th-new' : undefined,
-        connected: true,
+        connected: conn.value,
         sending: false,
         send,
         openThread: openThreadSpy,
@@ -66,6 +67,7 @@ beforeAll(() => {
 beforeEach(() => {
   localStorage.setItem('capybara.session', JSON.stringify({ token: 't', username: 'roman' }))
   sent.calls = []
+  conn.value = true
   openThreadSpy.mockReset()
 })
 
@@ -149,6 +151,27 @@ test('Enter is blocked when no valid model is selected', async () => {
   expect(sent.calls).toEqual([])
   // Welcome screen must still be visible — no thread became active
   expect(screen.getByText(/Чем помочь/)).toBeInTheDocument()
+})
+
+test('Enter does not send while the chat transport is not connected', async () => {
+  conn.value = false
+  localStorage.setItem('capybara.lastModel', 'llama3.1:8b')
+  server.use(
+    http.get('/api/models', () =>
+      HttpResponse.json({ provider: 'ollama', models: ['llama3.1:8b'] }),
+    ),
+  )
+  render(
+    <AuthProvider>
+      <ChatScreen />
+    </AuthProvider>,
+  )
+  await screen.findByText(/Чем помочь/)
+  // A valid model is selected, but the socket is not connected: pressing Enter must not
+  // emit — otherwise the message is dropped into a not-yet-ready socket and lost.
+  await userEvent.type(screen.getByRole('textbox'), 'Привет{Enter}')
+  await new Promise<void>((r) => setTimeout(r, 100))
+  expect(sent.calls).toEqual([])
 })
 
 test('a failed favorite toggle is rolled back to the server state', async () => {

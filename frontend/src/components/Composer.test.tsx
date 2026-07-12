@@ -66,6 +66,23 @@ test('blocks send when selected model is not in the list', async () => {
   expect(screen.getByLabelText('Отправить')).toBeDisabled()
 })
 
+test('disables the Send button until the transport is connected (ready=false)', async () => {
+  withRuntime(() => (
+    <Composer
+      models={MODELS}
+      selectedModel="llama3.1:8b"
+      onSelectModel={vi.fn()}
+      selectedMode="fast"
+      onSelectMode={vi.fn()}
+      ready={false}
+    />
+  ))
+  // A valid model is selected, but the socket is not connected yet — the Send button is
+  // disabled as a visual cue. (The Enter path is guarded separately in ChatScreen.handleSend.)
+  await userEvent.type(screen.getByRole('textbox'), 'Привет')
+  expect(screen.getByLabelText('Отправить')).toBeDisabled()
+})
+
 test('selecting a model calls onSelectModel', async () => {
   const onSelectModel = vi.fn()
   withRuntime(() => (
