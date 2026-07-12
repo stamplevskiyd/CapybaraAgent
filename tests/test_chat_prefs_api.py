@@ -61,17 +61,17 @@ async def test_chat_prefs_upsert_list_and_delete(prefs_client: AsyncClient) -> N
         f"/chat-prefs/{thread_id}", json={"is_favorite": True, "model": "llama3.1"}
     )
     assert created.status_code == 200
-    assert created.json() == {"thread_id": thread_id, "is_favorite": True, "model": "llama3.1"}
+    assert created.json() == {"thread_id": thread_id, "is_favorite": True, "model": "llama3.1", "mode": "fast"}
 
     # Listed.
     listed = (await prefs_client.get("/chat-prefs")).json()
-    assert listed == [{"thread_id": thread_id, "is_favorite": True, "model": "llama3.1"}]
+    assert listed == [{"thread_id": thread_id, "is_favorite": True, "model": "llama3.1", "mode": "fast"}]
 
     # Replace (unfavorite, clear model).
     replaced = await prefs_client.put(
         f"/chat-prefs/{thread_id}", json={"is_favorite": False, "model": None}
     )
-    assert replaced.json() == {"thread_id": thread_id, "is_favorite": False, "model": None}
+    assert replaced.json() == {"thread_id": thread_id, "is_favorite": False, "model": None, "mode": "fast"}
 
     # Delete.
     assert (await prefs_client.delete(f"/chat-prefs/{thread_id}")).status_code == 204
