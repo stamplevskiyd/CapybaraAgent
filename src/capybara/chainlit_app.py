@@ -143,7 +143,7 @@ async def stream_agent_message(
     model: str,
     thread_id: str,
     response: cl.Message,
-    mode: str = "smart",
+    mode: str = "fast",
     new_step: Callable[[str], cl.Step] = _tool_step,
 ) -> None:
     """Stream one runner response into a Chainlit message.
@@ -151,7 +151,8 @@ async def stream_agent_message(
     Text streams into *response*; tool calls open a Chainlit step on ``tool_start`` and
     finalize it (with the tool's output) on ``tool_end``, correlated by the run id in the
     event payload. *mode* selects the runtime (``"fast"`` react loop vs ``"smart"``
-    DeepAgents); it defaults to ``"smart"`` until the caller resolves the per-thread mode.
+    DeepAgents); it defaults to ``"fast"`` (the product default) — ``on_message`` always
+    passes an explicit resolved mode, so this default only matters to callers that omit it.
     """
     steps: dict[str, cl.Step] = {}
     async for event in runner.stream(content, model=model, thread_id=thread_id, mode=mode):
